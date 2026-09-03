@@ -22,14 +22,31 @@ export default defineConfig(async ({ mode }) => {
     // including the GitHub Pages project URL (/Signal-Flow-Studio/)
     // and the local sandbox preview (served at /).
     base: './',
+    // Publish a static build under /docs so GitHub Pages (branch + /docs)
+    // can serve a real site without a Actions workflow.
+    build: {
+      outDir: 'docs',
+      emptyOutDir: true,
+    },
     plugins,
     server: {
       host: '0.0.0.0',
+      port: 5173,
+      strictPort: true,
       allowedHosts: true,
+      cors: true,
+      headers: {
+        'Content-Security-Policy': "frame-ancestors *",
+      },
     } as any,
     preview: {
       host: '0.0.0.0',
+      port: 4173,
       allowedHosts: true,
+      cors: true,
+      headers: {
+        'Content-Security-Policy': "frame-ancestors *",
+      },
     } as any,
     envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
     define: processEnvDefines,
