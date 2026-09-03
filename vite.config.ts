@@ -31,11 +31,22 @@ export default defineConfig(async ({ mode }) => {
     plugins,
     server: {
       host: '0.0.0.0',
+      port: 5173,
+      strictPort: true,
       allowedHosts: true,
+      cors: true,
+      headers: {
+        'Content-Security-Policy': "frame-ancestors *",
+      },
     } as any,
     preview: {
       host: '0.0.0.0',
+      port: 4173,
       allowedHosts: true,
+      cors: true,
+      headers: {
+        'Content-Security-Policy': "frame-ancestors *",
+      },
     } as any,
     envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
     define: processEnvDefines,
