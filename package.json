@@ -6,7 +6,7 @@
   "homepage": "https://prathvirajkodachadri.github.io/Signal-Flow-Studio/",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node -e \"require('fs').copyFileSync('docs/index.html', 'docs/404.html')\"",
     "lint": "eslint .",
     "preview": "vite preview"
   },

@@ -6,20 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Signal Flow Studio — Audio Level & Mixing Guide</title>
     <meta name="description" content="Interactive audio signal flow visualization. Learn mixing, bus routing, gain staging, and mastering through animated visuals." />
-    <!-- @pages-bootstrap:strip
-      GitHub Pages is configured to deploy this repository from its raw branch
-      root ("Deploy from a branch: main /"), where this Vite source entry is
-      served but cannot run (browsers can't execute ./src/main.tsx). When the
-      page is served from GitHub Pages we therefore send visitors straight to
-      the prebuilt app in /docs/. The local Vite dev server runs on a different
-      hostname and is never redirected — it boots the app from ./src/main.tsx
-      below instead.
-
-      This whole block is removed from the production build (see the
-      strip-pages-bootstrap plugin in vite.config.ts): inside /docs/ the app
-      runs directly, so a redirect there must never exist.
-    -->
     <script>
+      // GitHub Pages serves this repository from its raw branch root, so any
+      // missing path (404) under the site lands here. The Vite source at the
+      // repo root cannot run in a browser, so route visitors to the prebuilt
+      // app in /docs/ instead. Local dev servers use a different hostname and
+      // never hit this page's redirect.
       (function () {
         var host = window.location.hostname || '';
         if (!/(^|\.)github\.io$/i.test(host)) return;
@@ -28,20 +20,22 @@
         var target;
         var docsAt = path.toLowerCase().indexOf('/docs/');
         if (docsAt > 0) {
-          // 404 or deep link already inside the built app.
           target = path.slice(0, docsAt) + '/docs/';
         } else {
-          // Project page: /<owner>/<repo>/... -> /<owner>/<repo>/docs/
           var first = path.split('/').filter(Boolean)[0];
           target = (first ? '/' + first : '') + '/docs/';
         }
         window.location.replace(target);
       })();
     </script>
-    <!-- @pages-bootstrap:strip:end -->
-    <script type="module" src="./src/main.tsx"></script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <p style="font-family: system-ui, sans-serif; padding: 2rem; color: #333">
+        Page not found. Signal Flow Studio's built app lives at
+        <a href="./docs/">/docs/</a> on GitHub Pages.
+      </p>
+    </noscript>
   </body>
 </html>
