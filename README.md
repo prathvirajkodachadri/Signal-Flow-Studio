@@ -25,26 +25,41 @@ npm run dev
 npm run build
 ```
 
-The production output is written to `dist/`.
+The production output (including a `404.html` SPA fallback) is written to
+`docs/`. The build uses a relative base (`base: './'`), so it works under the
+`/Signal-Flow-Studio/` project subpath.
 
 ## Deploying to GitHub Pages
 
-This project is configured to deploy automatically to GitHub Pages via a
-GitHub Actions workflow (`.github/workflows/deploy.yml`):
+The site can be deployed two ways.
 
-1. Push your changes to the `main` branch.
-2. The **Deploy to GitHub Pages** workflow builds the site and publishes the
-   `dist/` artifact.
+### Option A — GitHub Actions (recommended for future deploys)
 
-### Required GitHub Pages setting
+An example workflow is provided at `examples/github-pages-deploy.yml`:
 
-For the workflow to actually deploy, the repository's Pages source must be
-set to **GitHub Actions**:
+1. Copy it into `.github/workflows/deploy.yml` in your own commit.
+2. In **Settings → Pages → Build and deployment**, set **Source** to
+   **GitHub Actions**.
+3. Push changes to `main` (or run the workflow manually from the Actions tab).
 
-> **Settings → Pages → Build and deployment → Source → GitHub Actions**
+The built app is then served directly from the site root, e.g.
+`https://prathvirajkodachadri.github.io/Signal-Flow-Studio/`.
 
-(If it is currently set to *Deploy from a branch*, the branch content — the
-raw source — is served directly instead of the built app.)
+> Note: automated agents with limited GitHub permissions cannot create files
+> under `.github/workflows/` — the copy needs to be committed by a repo owner
+> or an agent with `workflows` permission.
 
-The build uses a relative base (`base: './'`) so the site works under the
-`/Signal-Flow-Studio/` project subpath.
+### Option B — Deploy from a branch (current setting)
+
+If Pages is set to **Deploy from a branch → main / (root)**, GitHub Pages
+serves the raw repository root — where the Vite source can't run in a browser.
+To keep the site working in that mode:
+
+- The committed `docs/` folder contains the prebuilt app.
+- The repo-root `index.html` (and `404.html`) detect GitHub Pages and
+  redirect visitors to `/Signal-Flow-Studio/docs/`, where the built app runs.
+  Local `npm run dev` is unaffected (different hostname, no redirect).
+
+> Keep `docs/` up to date in this mode: after changing source, run
+> `npm run build` and commit the regenerated `docs/` output along with your
+> changes.
