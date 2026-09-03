@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig(async ({ mode }) => {
-  const plugins = [react(), tailwindcss()];
+  const plugins: any[] = [react(), tailwindcss()];
   try {
     // @ts-ignore
     const m = await import('./.vite-source-tags.js');
@@ -23,6 +23,14 @@ export default defineConfig(async ({ mode }) => {
     // and the local sandbox preview (served at /).
     base: './',
     plugins,
+    server: {
+      host: '0.0.0.0',
+      allowedHosts: true,
+    } as any,
+    preview: {
+      host: '0.0.0.0',
+      allowedHosts: true,
+    } as any,
     envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
     define: processEnvDefines,
   };
