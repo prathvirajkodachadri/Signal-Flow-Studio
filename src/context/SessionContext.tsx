@@ -1,48 +1,78 @@
-import { createContext, useContext, useReducer, type ReactNode } from 'react';
+import { createContext, useContext, useReducer, useEffect, type ReactNode } from 'react';
 import {
   type Track, type Bus, type Genre, type SessionSize, type BusType,
-   TRACK_DEFS, BUS_DEFS, createTrack, getBusTypeForTracks,
-  type TrackType,
+  type TrackType, type PluginSlot,
+  BUS_DEFS, TRACK_DEFS, createTrack, getBusTypeForTracks, calculateSummedDb,
 } from '../data';
 
-interface SessionState {
+export type SessionViewMode = 'flow' | 'mixer' | 'rack' | 'chain';
+
+export interface SessionState {
   genre: Genre | null;
   size: SessionSize;
   tracks: Track[];
   buses: Bus[];
   selectedTrackId: string | null;
   selectedBusId: string | null;
+  deleteConfirmTrackId: string | null;
+  editTrackId: string | null;
+  addTrackModalOpen: boolean;
+  viewMode: SessionViewMode;
   followMode: boolean;
   followStep: number;
   followPlaying: boolean;
-  showBuilder: boolean;
+  audioEnabled: boolean;
+  mixBusDb: number;
+  preMasterDb: number;
 }
 
-type Action =
+export type Action =
   | { type: 'SET_GENRE'; genre: Genre; tracks: TrackType[] }
   | { type: 'SET_SIZE'; size: SessionSize }
   | { type: 'ADD_TRACK'; trackType: TrackType }
+  | { type: 'ADD_CUSTOM_TRACK'; track: Partial<Track> }
   | { type: 'REMOVE_TRACK'; trackId: string }
+  | { type: 'SET_DELETE_CONFIRM'; trackId: string | null }
+  | { type: 'SET_EDIT_TRACK'; trackId: string | null }
+  | { type: 'SET_ADD_MODAL_OPEN'; open: boolean }
+  | { type: 'UPDATE_TRACK'; trackId: string; updates: Partial<Track> }
+  | { type: 'REORDER_TRACKS'; tracks: Track[] }
+  | { type: 'MOVE_TRACK'; trackId: string; direction: 'up' | 'down' }
+  | { type: 'DUPLICATE_TRACK'; trackId: string }
   | { type: 'UPDATE_LEVEL'; trackId: string; db: number }
+  | { type: 'UPDATE_GAIN_TRIM'; trackId: string; trimDb: number }
   | { type: 'UPDATE_BUS_LEVEL'; busId: string; db: number }
   | { type: 'TOGGLE_MUTE'; trackId: string }
   | { type: 'TOGGLE_SOLO'; trackId: string }
+  | { type: 'MUTE_ALL' }
+  | { type: 'CLEAR_MUTES' }
+  | { type: 'CLEAR_SOLOS' }
   | { type: 'SET_PAN'; trackId: string; pan: number }
+  | { type: 'TOGGLE_TRACK_PLUGIN'; trackId: string; pluginIndex: number }
+  | { type: 'TOGGLE_BUS_PLUGIN'; busId: string; pluginIndex: number }
   | { type: 'SELECT_TRACK'; trackId: string | null }
   | { type: 'SELECT_BUS'; busId: string | null }
+  | { type: 'SET_VIEW_MODE'; viewMode: SessionViewMode }
+  | { type: 'SET_AUDIO_ENABLED'; enabled: boolean }
   | { type: 'START_FOLLOW' }
   | { type: 'STOP_FOLLOW' }
   | { type: 'SET_FOLLOW_STEP'; step: number }
   | { type: 'TOGGLE_FOLLOW_PLAY' }
-  | { type: 'SHOW_BUILDER' }
   | { type: 'RESET' };
 
 function buildBuses(tracks: Track[], size: SessionSize): Bus[] {
   const busTypes = getBusTypeForTracks(tracks, size);
   const buses: Bus[] = busTypes.map(bt => {
     const def = BUS_DEFS[bt];
-    const trackIds = tracks.filter(t => t.bus === bt).map(t => t.id);
-    const midDb = Math.round((def.dbRange[0] + def.dbRange[1]) / 2);
+    const busTracks = tracks.filter(t => t.bus === bt);
+    const trackIds = busTracks.map(t => t.id);
+
+    // Sum active (non-muted) tracks in this bus
+    const activeTrackDbs = busTracks.filter(t => !t.muted).map(t => t.currentDb + t.gainTrimDb);
+    const calculatedDb = activeTrackDbs.length > 0
+      ? calculateSummedDb(activeTrackDbs) - 6 // Standard summing attenuation for headroom
+      : -60;
+
     return {
       id: `bus-${bt}`,
       type: bt,
@@ -50,11 +80,24 @@ function buildBuses(tracks: Track[], size: SessionSize): Bus[] {
       color: def.color,
       icon: def.icon,
       dbRange: def.dbRange,
-      currentDb: midDb,
+      currentDb: Math.max(-60, Math.min(3, calculatedDb)),
       trackIds,
+      plugins: JSON.parse(JSON.stringify(def.suggestedPlugins)),
     };
   });
   return buses;
+}
+
+function calculateMasterLevels(buses: Bus[], tracks: Track[]) {
+  const anySolo = tracks.some(t => t.soloed);
+  const activeTracks = tracks.filter(t => (anySolo ? t.soloed : !t.muted));
+  const activeDbs = activeTracks.map(t => t.currentDb + t.gainTrimDb);
+
+  const rawMixDb = activeDbs.length > 0 ? calculateSummedDb(activeDbs) - 9 : -60;
+  const mixBusDb = Math.max(-60, Math.min(3, Math.round(rawMixDb * 10) / 10));
+  const preMasterDb = Math.max(-60, Math.min(0, Math.round((mixBusDb + 2) * 10) / 10));
+
+  return { mixBusDb, preMasterDb };
 }
 
 const initialState: SessionState = {
@@ -64,10 +107,16 @@ const initialState: SessionState = {
   buses: [],
   selectedTrackId: null,
   selectedBusId: null,
+  deleteConfirmTrackId: null,
+  editTrackId: null,
+  addTrackModalOpen: false,
+  viewMode: 'flow',
   followMode: false,
   followStep: 0,
   followPlaying: false,
-  showBuilder: false,
+  audioEnabled: false,
+  mixBusDb: -3.5,
+  preMasterDb: -1.0,
 };
 
 function reducer(state: SessionState, action: Action): SessionState {
@@ -75,59 +124,244 @@ function reducer(state: SessionState, action: Action): SessionState {
     case 'SET_GENRE': {
       const tracks = action.tracks.map(tt => createTrack(tt));
       const buses = buildBuses(tracks, state.size);
-      return { ...state, genre: action.genre, tracks, buses, showBuilder: true };
+      const { mixBusDb, preMasterDb } = calculateMasterLevels(buses, tracks);
+      return {
+        ...state,
+        genre: action.genre,
+        tracks,
+        buses,
+        selectedTrackId: null,
+        selectedBusId: null,
+        deleteConfirmTrackId: null,
+        editTrackId: null,
+        mixBusDb,
+        preMasterDb,
+      };
     }
+
     case 'SET_SIZE': {
       const buses = buildBuses(state.tracks, action.size);
-      return { ...state, size: action.size, buses };
+      const { mixBusDb, preMasterDb } = calculateMasterLevels(buses, state.tracks);
+      return { ...state, size: action.size, buses, mixBusDb, preMasterDb };
     }
+
     case 'ADD_TRACK': {
       const newTrack = createTrack(action.trackType);
       const tracks = [...state.tracks, newTrack];
       const buses = buildBuses(tracks, state.size);
-      return { ...state, tracks, buses };
+      const { mixBusDb, preMasterDb } = calculateMasterLevels(buses, tracks);
+      return {
+        ...state,
+        tracks,
+        buses,
+        selectedTrackId: newTrack.id,
+        addTrackModalOpen: false,
+        mixBusDb,
+        preMasterDb,
+      };
     }
+
+    case 'ADD_CUSTOM_TRACK': {
+      const baseType = (action.track.type as TrackType) || 'synth';
+      const template = createTrack(baseType);
+      const newTrack: Track = {
+        ...template,
+        ...action.track,
+        id: `trk-custom-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      } as Track;
+      const tracks = [...state.tracks, newTrack];
+      const buses = buildBuses(tracks, state.size);
+      const { mixBusDb, preMasterDb } = calculateMasterLevels(buses, tracks);
+      return {
+        ...state,
+        tracks,
+        buses,
+        selectedTrackId: newTrack.id,
+        addTrackModalOpen: false,
+        mixBusDb,
+        preMasterDb,
+      };
+    }
+
     case 'REMOVE_TRACK': {
       const tracks = state.tracks.filter(t => t.id !== action.trackId);
       const buses = buildBuses(tracks, state.size);
-      return { ...state, tracks, buses, selectedTrackId: state.selectedTrackId === action.trackId ? null : state.selectedTrackId };
+      const { mixBusDb, preMasterDb } = calculateMasterLevels(buses, tracks);
+      return {
+        ...state,
+        tracks,
+        buses,
+        selectedTrackId: state.selectedTrackId === action.trackId ? null : state.selectedTrackId,
+        deleteConfirmTrackId: null,
+        mixBusDb,
+        preMasterDb,
+      };
     }
+
+    case 'SET_DELETE_CONFIRM':
+      return { ...state, deleteConfirmTrackId: action.trackId };
+
+    case 'SET_EDIT_TRACK':
+      return { ...state, editTrackId: action.trackId };
+
+    case 'SET_ADD_MODAL_OPEN':
+      return { ...state, addTrackModalOpen: action.open };
+
+    case 'UPDATE_TRACK': {
+      const tracks = state.tracks.map(t => (t.id === action.trackId ? { ...t, ...action.updates } : t));
+      const buses = buildBuses(tracks, state.size);
+      const { mixBusDb, preMasterDb } = calculateMasterLevels(buses, tracks);
+      return { ...state, tracks, buses, mixBusDb, preMasterDb };
+    }
+
+    case 'REORDER_TRACKS': {
+      return { ...state, tracks: action.tracks };
+    }
+
+    case 'MOVE_TRACK': {
+      const index = state.tracks.findIndex(t => t.id === action.trackId);
+      if (index === -1) return state;
+      const targetIndex = action.direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= state.tracks.length) return state;
+
+      const newTracks = [...state.tracks];
+      const [moved] = newTracks.splice(index, 1);
+      newTracks.splice(targetIndex, 0, moved);
+
+      return { ...state, tracks: newTracks };
+    }
+
+    case 'DUPLICATE_TRACK': {
+      const original = state.tracks.find(t => t.id === action.trackId);
+      if (!original) return state;
+      const index = state.tracks.findIndex(t => t.id === action.trackId);
+
+      const duplicated: Track = {
+        ...JSON.parse(JSON.stringify(original)),
+        id: `trk-dup-${Date.now()}`,
+        name: `${original.name} (Copy)`,
+      };
+
+      const newTracks = [...state.tracks];
+      newTracks.splice(index + 1, 0, duplicated);
+      const buses = buildBuses(newTracks, state.size);
+      const { mixBusDb, preMasterDb } = calculateMasterLevels(buses, newTracks);
+
+      return {
+        ...state,
+        tracks: newTracks,
+        buses,
+        selectedTrackId: duplicated.id,
+        mixBusDb,
+        preMasterDb,
+      };
+    }
+
     case 'UPDATE_LEVEL': {
-      const tracks = state.tracks.map(t => t.id === action.trackId ? { ...t, currentDb: action.db } : t);
-      return { ...state, tracks };
+      const tracks = state.tracks.map(t => (t.id === action.trackId ? { ...t, currentDb: action.db } : t));
+      const buses = buildBuses(tracks, state.size);
+      const { mixBusDb, preMasterDb } = calculateMasterLevels(buses, tracks);
+      return { ...state, tracks, buses, mixBusDb, preMasterDb };
     }
+
+    case 'UPDATE_GAIN_TRIM': {
+      const tracks = state.tracks.map(t => (t.id === action.trackId ? { ...t, gainTrimDb: action.trimDb } : t));
+      const buses = buildBuses(tracks, state.size);
+      const { mixBusDb, preMasterDb } = calculateMasterLevels(buses, tracks);
+      return { ...state, tracks, buses, mixBusDb, preMasterDb };
+    }
+
     case 'UPDATE_BUS_LEVEL': {
-      const buses = state.buses.map(b => b.id === action.busId ? { ...b, currentDb: action.db } : b);
+      const buses = state.buses.map(b => (b.id === action.busId ? { ...b, currentDb: action.db } : b));
       return { ...state, buses };
     }
+
     case 'TOGGLE_MUTE': {
-      const tracks = state.tracks.map(t => t.id === action.trackId ? { ...t, muted: !t.muted } : t);
-      return { ...state, tracks };
+      const tracks = state.tracks.map(t => (t.id === action.trackId ? { ...t, muted: !t.muted } : t));
+      const buses = buildBuses(tracks, state.size);
+      const { mixBusDb, preMasterDb } = calculateMasterLevels(buses, tracks);
+      return { ...state, tracks, buses, mixBusDb, preMasterDb };
     }
+
     case 'TOGGLE_SOLO': {
-      const tracks = state.tracks.map(t => t.id === action.trackId ? { ...t, soloed: !t.soloed } : t);
-      return { ...state, tracks };
+      const tracks = state.tracks.map(t => (t.id === action.trackId ? { ...t, soloed: !t.soloed } : t));
+      const buses = buildBuses(tracks, state.size);
+      const { mixBusDb, preMasterDb } = calculateMasterLevels(buses, tracks);
+      return { ...state, tracks, buses, mixBusDb, preMasterDb };
     }
+
+    case 'MUTE_ALL': {
+      const allMuted = state.tracks.every(t => t.muted);
+      const tracks = state.tracks.map(t => ({ ...t, muted: !allMuted }));
+      const buses = buildBuses(tracks, state.size);
+      const { mixBusDb, preMasterDb } = calculateMasterLevels(buses, tracks);
+      return { ...state, tracks, buses, mixBusDb, preMasterDb };
+    }
+
+    case 'CLEAR_MUTES': {
+      const tracks = state.tracks.map(t => ({ ...t, muted: false }));
+      const buses = buildBuses(tracks, state.size);
+      const { mixBusDb, preMasterDb } = calculateMasterLevels(buses, tracks);
+      return { ...state, tracks, buses, mixBusDb, preMasterDb };
+    }
+
+    case 'CLEAR_SOLOS': {
+      const tracks = state.tracks.map(t => ({ ...t, soloed: false }));
+      const buses = buildBuses(tracks, state.size);
+      const { mixBusDb, preMasterDb } = calculateMasterLevels(buses, tracks);
+      return { ...state, tracks, buses, mixBusDb, preMasterDb };
+    }
+
     case 'SET_PAN': {
-      const tracks = state.tracks.map(t => t.id === action.trackId ? { ...t, pan: action.pan } : t);
+      const tracks = state.tracks.map(t => (t.id === action.trackId ? { ...t, pan: action.pan } : t));
       return { ...state, tracks };
     }
+
+    case 'TOGGLE_TRACK_PLUGIN': {
+      const tracks = state.tracks.map(t => {
+        if (t.id !== action.trackId) return t;
+        const plugins = t.plugins.map((p, idx) => (idx === action.pluginIndex ? { ...p, enabled: !p.enabled } : p));
+        return { ...t, plugins };
+      });
+      return { ...state, tracks };
+    }
+
+    case 'TOGGLE_BUS_PLUGIN': {
+      const buses = state.buses.map(b => {
+        if (b.id !== action.busId) return b;
+        const plugins = b.plugins.map((p, idx) => (idx === action.pluginIndex ? { ...p, enabled: !p.enabled } : p));
+        return { ...b, plugins };
+      });
+      return { ...state, buses };
+    }
+
     case 'SELECT_TRACK':
       return { ...state, selectedTrackId: action.trackId, selectedBusId: null };
+
     case 'SELECT_BUS':
       return { ...state, selectedBusId: action.busId, selectedTrackId: null };
+
+    case 'SET_VIEW_MODE':
+      return { ...state, viewMode: action.viewMode };
+
+    case 'SET_AUDIO_ENABLED':
+      return { ...state, audioEnabled: action.enabled };
+
     case 'START_FOLLOW':
       return { ...state, followMode: true, followStep: 0, followPlaying: true };
+
     case 'STOP_FOLLOW':
       return { ...state, followMode: false, followPlaying: false };
+
     case 'SET_FOLLOW_STEP':
       return { ...state, followStep: action.step };
+
     case 'TOGGLE_FOLLOW_PLAY':
       return { ...state, followPlaying: !state.followPlaying };
-    case 'SHOW_BUILDER':
-      return { ...state, showBuilder: true };
+
     case 'RESET':
       return initialState;
+
     default:
       return state;
   }
@@ -140,6 +374,7 @@ const SessionContext = createContext<{
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+
   return (
     <SessionContext.Provider value={{ state, dispatch }}>
       {children}
@@ -152,5 +387,3 @@ export function useSession() {
   if (!ctx) throw new Error('useSession must be used within SessionProvider');
   return ctx;
 }
-
-export type { SessionState };
