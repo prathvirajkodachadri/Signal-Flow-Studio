@@ -18,6 +18,10 @@ export default defineConfig(async ({ mode }) => {
   }
 
   return {
+    // Relative base so the built app works under any subpath,
+    // including the GitHub Pages project URL (/Signal-Flow-Studio/)
+    // and the local sandbox preview (served at /).
+    base: './',
     plugins,
     envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
     define: processEnvDefines,
