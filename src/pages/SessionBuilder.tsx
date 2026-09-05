@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Play, RotateCcw, X, Layers, Zap, Sliders, Volume2, VolumeX,
-  SlidersHorizontal, CheckCircle2, LayoutGrid, Cpu, ArrowUpDown, HelpCircle,
+  SlidersHorizontal, CheckCircle2, LayoutGrid, Cpu, ArrowUpDown, HelpCircle, Disc,
 } from 'lucide-react';
 import { useSession } from '../context/SessionContext';
 import { GenreSelector } from '../components/GenreSelector';
@@ -12,9 +12,10 @@ import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import { TrackEditModal } from '../components/TrackEditModal';
 import { AddTrackModal } from '../components/AddTrackModal';
 import { LevelMeter, MiniWaveform, LevelHealthBadge } from '../components/LevelMeter';
+import { PlatformChipRow, DeliveryReadinessPanel } from '../components/PlatformSelector';
 import {
   type TrackType, type SessionSize, type Genre,
-  getLevelHealth, getHealthColor, BUS_DEFS, TRACK_DEFS,
+  getLevelHealth, getHealthColor, BUS_DEFS, getGenrePreset, isIndianGenre, getPlatform,
 } from '../data';
 
 const GENRE_COLORS: Record<Genre, string> = {
@@ -26,6 +27,14 @@ const GENRE_COLORS: Record<Genre, string> = {
   cinematic: '#FFD700',
   podcast: '#06D6A0',
   custom: '#4CC9F0',
+  bollywood: '#FF9933',
+  punjabi: '#E76F51',
+  hindustani: '#138808',
+  carnatic: '#8ECAE6',
+  sufi: '#7209B7',
+  bhajan: '#FFD166',
+  indianIndie: '#06D6A0',
+  southIndian: '#F72585',
 };
 
 export function SessionBuilder() {
@@ -147,6 +156,14 @@ export function SessionBuilder() {
             <span>•</span>
             <span>{buses.length} Groups</span>
           </div>
+
+          {/* Upload destination — drives every dB target in the session */}
+          <div className="flex items-center gap-1.5">
+            <span className="hidden lg:inline text-[8px] font-mono text-white/25 uppercase tracking-wider">
+              Upload to
+            </span>
+            <PlatformChipRow />
+          </div>
         </div>
 
         {/* Center: View Switcher */}
@@ -266,6 +283,8 @@ export function SessionBuilder() {
         {/* Right Info & Headroom Panel */}
         <div className="w-56 border-l border-white/5 bg-black/30 backdrop-blur-md overflow-y-auto custom-scrollbar flex flex-col justify-between">
           <div>
+            <DeliveryReadinessPanel />
+            <GenreNotesPanel />
             <SessionHeadroomSummary />
             <WhatIfStressPanel />
           </div>
@@ -533,6 +552,7 @@ function RoutingMatrixView({
 function SessionHeadroomSummary() {
   const { state } = useSession();
   const { tracks, buses, mixBusDb } = state;
+  const platform = getPlatform(state.platform);
 
   const healthCounts = {
     healthy: tracks.filter(t => getLevelHealth(t.currentDb, t.dbRange) === 'healthy').length,
@@ -576,9 +596,21 @@ function SessionHeadroomSummary() {
             className="h-full rounded-full"
             style={{
               width: `${((mixBusDb + 60) / 60) * 100}%`,
-              background: mixBusDb > -3 ? '#EF476F' : '#FFD700',
+              background: mixBusDb > platform.mixBusPeak[1] ? '#EF476F' : '#FFD700',
             }}
           />
+          {/* Platform target window marker */}
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-emerald-400/80"
+            style={{ left: `${((platform.mixBusPeak[0] + 60) / 60) * 100}%` }}
+          />
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-emerald-400/80"
+            style={{ left: `${((platform.mixBusPeak[1] + 60) / 60) * 100}%` }}
+          />
+        </div>
+        <div className="text-[7px] font-mono text-white/25 mt-1">
+          {platform.shortName} window: {platform.mixBusPeak[0]} to {platform.mixBusPeak[1]} dBFS
         </div>
       </div>
     </div>
@@ -662,12 +694,76 @@ function WhatIfStressPanel() {
 }
 
 function QuickWorkflowTips() {
+  const { state } = useSession();
+  const platform = getPlatform(state.platform);
+
   return (
     <div className="p-3 bg-black/40 border-t border-white/5 text-[8px] font-mono text-white/30 space-y-1">
       <div className="text-white/60 font-bold flex items-center gap-1">
-        <HelpCircle size={9} /> Gain Staging Rule
+        <HelpCircle size={9} /> {platform.icon} {platform.shortName} Rule
       </div>
-      <p>Keep tracks at -18 to -12 dBFS so 20+ channels won't clip the mix bus.</p>
+      <p>
+        Tracks {platform.trackTrimDb === 0 ? 'at -18 to -12 dBFS' : `${platform.trackTrimDb} dB down`}, mix bus peaking{' '}
+        {platform.mixBusPeak[0]} to {platform.mixBusPeak[1]} dBFS, limiter ceiling{' '}
+        {platform.masterCeiling.toFixed(1)} dBTP → {platform.targetLufs} LUFS.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Genre notes + reference songs (Indian presets ship with reference tracks
+ * so you can A/B your mix against something familiar).
+ */
+function GenreNotesPanel() {
+  const { state } = useSession();
+  const preset = getGenrePreset(state.genre);
+  if (!preset) return null;
+
+  const indian = isIndianGenre(state.genre);
+
+  return (
+    <div className="p-3 border-b border-white/5">
+      <div className="flex items-center gap-1.5 mb-2">
+        <Disc size={11} style={{ color: preset.color }} />
+        <span className="text-[9px] font-mono text-white/40 uppercase tracking-wider font-bold">
+          {indian ? 'Indian Repertoire' : 'Style Notes'}
+        </span>
+        {indian && (
+          <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-300 border border-orange-500/25">
+            🇮🇳
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span className="text-sm">{preset.icon}</span>
+        <span className="text-[10px] font-bold" style={{ color: preset.color }}>
+          {preset.name}
+        </span>
+      </div>
+
+      <div className="text-[8px] font-mono text-white/30 mb-2">
+        {preset.bpm > 0 ? `${preset.bpm} BPM` : 'Tempo free'} · {preset.key}
+        {preset.tracks.length > 0 ? ` · ${preset.tracks.length} tracks` : ''}
+      </div>
+
+      {preset.mixNotes && (
+        <p className="text-[8px] font-mono text-white/45 leading-snug mb-2">{preset.mixNotes}</p>
+      )}
+
+      {preset.referenceSongs && preset.referenceSongs.length > 0 && (
+        <div className="space-y-0.5">
+          <div className="text-[7px] font-mono text-white/25 uppercase tracking-wider">
+            Reference songs
+          </div>
+          {preset.referenceSongs.map(song => (
+            <div key={song} className="text-[8px] font-mono text-white/40 truncate" title={song}>
+              ♪ {song}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -39,6 +39,13 @@ export function LevelMeter({
       return;
     }
     const diff = db - displayDb;
+    // Snap once the needle has effectively arrived — otherwise the asymptotic
+    // animation never settles and keeps scheduling renders forever (which is
+    // very visible when a whole session is re-targeted at once).
+    if (Math.abs(diff) < 0.05) {
+      if (displayDb !== db) setDisplayDb(db);
+      return;
+    }
     const step = diff * 0.35;
     setDisplayDb(prev => prev + step);
   }, [db, animated, displayDb]);

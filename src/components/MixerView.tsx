@@ -5,19 +5,24 @@ import {
   CheckCircle2, AlertTriangle, ArrowRight, CornerDownRight,
   Radio, Sparkles, Filter, Disc, Speaker, Layers,
 } from 'lucide-react';
-import { useSession } from '../context/SessionContext';
+import { useSession, useSignalFlowStages, useDeliveryAnalysis } from '../context/SessionContext';
 import {
   type Track, type Bus, getLevelHealth, getHealthColor,
-  BUS_DEFS, TRACK_DEFS, SIGNAL_FLOW_STAGES,
+  BUS_DEFS, TRACK_DEFS, getPlatform, type SignalFlowStage,
 } from '../data';
+import { DeliveryBoard, PlatformChipRow } from './PlatformSelector';
 import {
   LevelMeter, MiniWaveform, AnalogVuMeter, LufsMeter,
   LevelHealthBadge, FrequencySpectrum,
 } from './LevelMeter';
 
 export function MixerView() {
-  const { state, dispatch } = useSession();
+  const { state } = useSession();
   const { tracks, buses, mixBusDb, preMasterDb } = state;
+  /** Signal flow stages resolved for the selected upload platform. */
+  const stages = useSignalFlowStages();
+  const platform = getPlatform(state.platform);
+  const analysis = useDeliveryAnalysis();
 
   const [activeTab, setActiveTab] = useState<'chain' | 'console' | 'inspector'>('chain');
   const [activeStageId, setActiveStageId] = useState<string>('input');
@@ -76,6 +81,14 @@ export function MixerView() {
           </button>
         </div>
 
+        {/* Upload destination */}
+        <div className="flex items-center gap-1.5">
+          <span className="hidden xl:inline text-[8px] font-mono text-white/25 uppercase tracking-wider">
+            Upload to
+          </span>
+          <PlatformChipRow />
+        </div>
+
         {/* Master Output Badge */}
         <div className="flex items-center gap-2 bg-black/50 px-3 py-1 rounded-xl border border-white/10">
           <div className="flex items-center gap-1.5">
@@ -87,6 +100,13 @@ export function MixerView() {
           <div className="flex items-center gap-1.5">
             <span className="text-[9px] font-mono text-white/50 uppercase">Master:</span>
             <span className="text-[10px] font-mono font-bold text-white">{preMasterDb.toFixed(1)} dBTP</span>
+          </div>
+          <span className="text-white/20">|</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] font-mono text-white/50 uppercase">{platform.shortName}:</span>
+            <span className="text-[10px] font-mono font-bold" style={{ color: platform.color }}>
+              {analysis.estimatedLufs.toFixed(1)} LUFS
+            </span>
           </div>
         </div>
       </div>
@@ -126,15 +146,15 @@ export function MixerView() {
             {/* Complete Interactive Horizontal Signal Flow Diagram */}
             <div className="relative p-5 rounded-3xl bg-black/40 border border-white/10 shadow-2xl overflow-x-auto custom-scrollbar">
               <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-4 font-bold flex items-center justify-between">
-                <span>Complete Audio Path: Source → Inserts → Groups → Master</span>
+                <span>Complete Audio Path: Source → Inserts → Groups → Master → {platform.shortName}</span>
                 <span className="text-emerald-400">⚡ Live Audio Cable Pulse</span>
               </div>
 
               {/* Connected Stages Flow Strip */}
               <div className="flex items-center gap-3 min-w-[980px] justify-between relative py-2">
-                {SIGNAL_FLOW_STAGES.map((stage, idx) => {
+                {stages.map((stage, idx) => {
                   const isSelected = activeStageId === stage.id;
-                  const isLast = idx === SIGNAL_FLOW_STAGES.length - 1;
+                  const isLast = idx === stages.length - 1;
 
                   return (
                     <div key={stage.id} className="flex items-center flex-1">
@@ -182,9 +202,16 @@ export function MixerView() {
 
                         {/* Target Level Chip */}
                         <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between text-[8px] font-mono">
-                          <span className="text-white/30">Target</span>
+                          <span className="text-white/30">
+                            Target
+                            {stage.scope === 'platform' && (
+                              <span className="ml-1 px-1 rounded" style={{ background: `${platform.color}25`, color: platform.color }}>
+                                {platform.shortName}
+                              </span>
+                            )}
+                          </span>
                           <span className="font-bold" style={{ color: stage.color }}>
-                            {stage.targetDb} dBFS
+                            {stage.id === 'delivery' ? `${stage.targetDb} LUFS` : `${stage.targetDb} dBFS`}
                           </span>
                         </div>
                       </motion.div>
@@ -195,7 +222,7 @@ export function MixerView() {
                           <div
                             className="h-1 w-full rounded-full"
                             style={{
-                              background: `linear-gradient(to right, ${stage.color}60, ${SIGNAL_FLOW_STAGES[idx + 1].color}60)`,
+                              background: `linear-gradient(to right, ${stage.color}60, ${stages[idx + 1].color}60)`,
                             }}
                           />
                           <motion.div
@@ -215,6 +242,7 @@ export function MixerView() {
             {/* Deep Stage Inspector Details */}
             {activeStageId && (
               <StageDetailInspector
+                stages={stages}
                 stageId={activeStageId}
                 currentTrack={currentTrack}
                 mixBusDb={mixBusDb}
@@ -233,17 +261,22 @@ export function MixerView() {
                 setSatDrive={setSatDrive}
               />
             )}
+
+            <DeliveryBoard />
           </div>
         )}
 
         {/* Console Mixer View */}
         {activeTab === 'console' && (
-          <ConsoleMixerView
-            tracks={tracks}
-            buses={buses}
-            mixBusDb={mixBusDb}
-            preMasterDb={preMasterDb}
-          />
+          <div className="space-y-6">
+            <ConsoleMixerView
+              tracks={tracks}
+              buses={buses}
+              mixBusDb={mixBusDb}
+              preMasterDb={preMasterDb}
+            />
+            <DeliveryBoard />
+          </div>
         )}
       </div>
     </div>
@@ -254,6 +287,7 @@ export function MixerView() {
  * Interactive Stage Detail Inspector
  */
 function StageDetailInspector({
+  stages,
   stageId,
   currentTrack,
   mixBusDb,
@@ -271,8 +305,11 @@ function StageDetailInspector({
   satDrive,
   setSatDrive,
 }: any) {
-  const stage = SIGNAL_FLOW_STAGES.find(s => s.id === stageId) || SIGNAL_FLOW_STAGES[0];
-  const { dispatch } = useSession();
+  const stageList = stages as SignalFlowStage[];
+  const stage = stageList.find((s: SignalFlowStage) => s.id === stageId) || stageList[0];
+  const { state, dispatch } = useSession();
+  const platform = getPlatform(state.platform);
+  const analysis = useDeliveryAnalysis();
 
   return (
     <motion.div
@@ -295,12 +332,23 @@ function StageDetailInspector({
             {stage.icon}
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center flex-wrap gap-2">
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-white/60">
-                Stage {stage.step} of 7
+                Stage {stage.step} of {stageList.length}
               </span>
               <span className="text-xs font-mono font-bold" style={{ color: stage.color }}>
                 {stage.targetText}
+              </span>
+              <span
+                className="text-[8px] font-mono px-2 py-0.5 rounded-full"
+                style={{
+                  background: stage.scope === 'platform' ? `${platform.color}20` : 'rgba(255,255,255,0.05)',
+                  color: stage.scope === 'platform' ? platform.color : 'rgba(255,255,255,0.45)',
+                }}
+              >
+                {stage.scope === 'platform'
+                  ? `⚙ SET BY ${platform.shortName.toUpperCase()}`
+                  : '🔒 UNIVERSAL — SAME ON EVERY PLATFORM'}
               </span>
             </div>
             <h3 className="text-lg font-bold text-white/95 mt-0.5" style={{ fontFamily: 'Outfit, sans-serif' }}>
@@ -327,7 +375,23 @@ function StageDetailInspector({
               {stage.details}
             </p>
             <div className="p-2.5 rounded-xl bg-white/3 border border-white/5 text-[10px] font-mono text-emerald-400">
-              💡 Target: Aim for nominal signals near {stage.targetDb} dBFS.
+              💡 Target: Aim for nominal signals near {stage.targetDb} {stage.id === 'delivery' ? 'LUFS' : 'dBFS'}.
+            </div>
+
+            {/* Platform-specific guidance for this stage */}
+            <div
+              className="p-2.5 rounded-xl border text-[10px] font-mono leading-relaxed"
+              style={{
+                background: `${stage.color}0d`,
+                borderColor: `${stage.color}30`,
+                color: 'rgba(255,255,255,0.6)',
+              }}
+            >
+              <div className="flex items-center gap-1.5 mb-1 text-[9px] font-bold uppercase tracking-wider" style={{ color: stage.color }}>
+                <span>{platform.icon}</span>
+                <span>{platform.name} note</span>
+              </div>
+              {stage.platformNote}
             </div>
           </div>
 
@@ -496,7 +560,9 @@ function StageDetailInspector({
                   <div key={b.type} className="p-2.5 rounded-xl border text-center" style={{ background: `${b.color}10`, borderColor: `${b.color}25` }}>
                     <div className="text-base mb-1">{b.icon}</div>
                     <div className="text-[10px] font-bold text-white">{b.name}</div>
-                    <div className="text-[8px] font-mono text-emerald-400">{b.dbRange[0]} to {b.dbRange[1]} dB</div>
+                    <div className="text-[8px] font-mono text-emerald-400">
+                      {(b.dbRange[0] + platform.busTrimDb).toFixed(1)} to {(b.dbRange[1] + platform.busTrimDb).toFixed(1)} dB
+                    </div>
                   </div>
                 ))}
               </div>
@@ -505,12 +571,40 @@ function StageDetailInspector({
 
           {stageId === 'mixBus' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-xl bg-amber-500/5 border border-amber-500/20">
-                <div>
-                  <div className="text-xs font-bold text-amber-400">Master Mix Bus (2-Bus) Headroom</div>
-                  <div className="text-[10px] font-mono text-white/50">Current Sum: {mixBusDb.toFixed(1)} dBFS (Ideal: -6 to -3 dBFS)</div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-4 rounded-xl bg-amber-500/5 border border-amber-500/20">
+                  <div>
+                    <div className="text-xs font-bold text-amber-400">
+                      Master Mix Bus (2-Bus) Headroom — {platform.icon} {platform.shortName}
+                    </div>
+                    <div className="text-[10px] font-mono text-white/50">
+                      Current Sum: {mixBusDb.toFixed(1)} dBFS (Ideal: {platform.mixBusPeak[0]} to {platform.mixBusPeak[1]} dBFS)
+                    </div>
+                    <div className="text-[9px] font-mono mt-1" style={{ color: platform.color }}>
+                      {platform.headroomDb} dB of headroom reserved for the {platform.masterCeiling.toFixed(1)} dBTP limiter → {platform.targetLufs} LUFS
+                    </div>
+                  </div>
+                  <AnalogVuMeter dbFS={mixBusDb} width={140} height={85} />
                 </div>
-                <AnalogVuMeter dbFS={mixBusDb} width={140} height={85} />
+
+                {/* How this platform shifts the bus windows */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {Object.values(BUS_DEFS)
+                    .filter(b => b.type !== 'mixBus' && b.type !== 'preMaster')
+                    .slice(0, 4)
+                    .map(b => {
+                      const shifted = platform.busTrimDb !== 0;
+                      return (
+                        <div key={b.type} className="p-2 rounded-xl bg-white/3 border border-white/5">
+                          <div className="text-[9px] font-bold" style={{ color: b.color }}>{b.icon} {b.name.replace(' Bus', '')}</div>
+                          <div className="text-[8px] font-mono text-white/40">
+                            {(b.dbRange[0] + platform.busTrimDb).toFixed(1)} to {(b.dbRange[1] + platform.busTrimDb).toFixed(1)} dB
+                            {shifted && <span style={{ color: platform.color }}> ({platform.busTrimDb})</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
             </div>
           )}
@@ -518,14 +612,100 @@ function StageDetailInspector({
           {stageId === 'master' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <LufsMeter lufs={-14} target={-14} truePeak={preMasterDb} />
-                <div className="p-4 rounded-xl bg-white/3 border border-white/5 space-y-2 font-mono">
-                  <div className="text-xs font-bold text-white">Streaming Delivery Standards</div>
-                  <div className="text-[9px] text-white/60 space-y-1">
-                    <div>• <strong>Spotify / YouTube:</strong> -14 LUFS / -1.0 dBTP</div>
-                    <div>• <strong>Apple Music:</strong> -16 LUFS / -1.0 dBTP</div>
-                    <div>• <strong>Broadcast TV (EBU):</strong> -23 LUFS / -1.0 dBTP</div>
+                <LufsMeter lufs={analysis.estimatedLufs} target={platform.targetLufs} truePeak={preMasterDb} />
+                <div className="p-4 rounded-xl border space-y-2 font-mono" style={{ background: `${platform.color}08`, borderColor: `${platform.color}25` }}>
+                  <div className="text-xs font-bold" style={{ color: platform.color }}>
+                    {platform.icon} {platform.name} delivery standard
                   </div>
+                  <div className="text-[9px] text-white/60 space-y-1">
+                    <div>• <strong>Integrated:</strong> {platform.targetLufs} LUFS ({platform.lufsRange[0]} to {platform.lufsRange[1]})</div>
+                    <div>• <strong>True peak:</strong> {platform.truePeakCeiling.toFixed(1)} dBTP{platform.loudMasterCeiling < platform.truePeakCeiling ? ` (${platform.loudMasterCeiling.toFixed(1)} if louder than ${platform.targetLufs})` : ''}</div>
+                    <div>• <strong>Normalization:</strong> {platform.normalizationLabel}</div>
+                    <div>• <strong>PLR target:</strong> {platform.plrTarget[0]}-{platform.plrTarget[1]} dB</div>
+                  </div>
+                  <div className="text-[9px] text-white/45 pt-1 border-t border-white/5">
+                    Modelled master: {analysis.estimatedLufs.toFixed(1)} LUFS at {preMasterDb.toFixed(1)} dBTP ·{' '}
+                    <span style={{ color: '#FFD700' }}>{analysis.normalizationAction}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {stageId === 'delivery' && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-bold" style={{ color: platform.color }}>
+                  {platform.icon} {platform.name} — encode & loudness normalization
+                </div>
+                <PlatformChipRow size="md" />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3 rounded-xl bg-white/3 border border-white/5">
+                  <div className="text-[8px] font-mono text-white/30 uppercase tracking-wider">Integrated target</div>
+                  <div className="text-lg font-mono font-black" style={{ color: platform.color }}>
+                    {platform.targetLufs} LUFS
+                  </div>
+                  <div className="text-[8px] font-mono text-white/35">
+                    Acceptable: {platform.lufsRange[0]} to {platform.lufsRange[1]} LUFS
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-white/3 border border-white/5">
+                  <div className="text-[8px] font-mono text-white/30 uppercase tracking-wider">True peak ceiling</div>
+                  <div className="text-lg font-mono font-black text-yellow-400">
+                    {platform.truePeakCeiling.toFixed(1)} dBTP
+                  </div>
+                  <div className="text-[8px] font-mono text-white/35">
+                    {platform.loudMasterCeiling < platform.truePeakCeiling
+                      ? `${platform.loudMasterCeiling.toFixed(1)} dBTP if louder than ${platform.targetLufs} LUFS`
+                      : 'Lossy-safe headroom'}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-white/3 border border-white/5">
+                  <div className="text-[8px] font-mono text-white/30 uppercase tracking-wider">Normalization</div>
+                  <div className="text-[11px] font-mono font-bold text-white/80">
+                    {platform.normalizationLabel}
+                  </div>
+                  <div className="text-[8px] font-mono text-white/35 mt-0.5">
+                    LRA {platform.lraTarget[0]}-{platform.lraTarget[1]} LU · PLR {platform.plrTarget[0]}-{platform.plrTarget[1]} dB
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-black/40 border border-white/5 font-mono text-[9px] space-y-1">
+                <div><span className="text-white/30">Codec:</span> <span className="text-white/60">{platform.codec}</span></div>
+                <div><span className="text-white/30">Deliver:</span> <span className="text-white/60">{platform.deliveryFormat}</span></div>
+                <div><span className="text-white/30">Sample rate:</span> <span className="text-white/60">{platform.sampleRate}</span></div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <LufsMeter lufs={analysis.estimatedLufs} target={platform.targetLufs} truePeak={analysis.truePeak} />
+                <div className="p-3 rounded-xl bg-white/3 border border-white/5 space-y-1.5">
+                  <div className="text-[9px] font-mono text-white/40 uppercase tracking-wider">What the platform will do</div>
+                  {analysis.platformResults.filter(r => r.active).map(r => (
+                    <div key={r.id} className="flex items-center justify-between text-[10px] font-mono">
+                      <span style={{ color: r.color }}>{r.icon} {r.name}</span>
+                      <span className="text-white/60">{r.action}</span>
+                    </div>
+                  ))}
+                  <div className="text-[9px] font-mono text-white/30 pt-1 border-t border-white/5">
+                    {platform.normalizationDetail}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl border" style={{ background: `${platform.color}0a`, borderColor: `${platform.color}25` }}>
+                <div className="text-[9px] font-mono font-bold uppercase tracking-wider mb-1.5" style={{ color: platform.color }}>
+                  Upload checklist
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                  {platform.uploadChecklist.map(c => (
+                    <div key={c} className="text-[9px] font-mono text-white/55 flex gap-1.5">
+                      <span style={{ color: platform.color }}>✓</span>
+                      <span>{c}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

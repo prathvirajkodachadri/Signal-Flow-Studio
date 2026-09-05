@@ -1,8 +1,66 @@
 # Signal Flow Studio
 
-An interactive audio signal flow visualization. Learn mixing, bus routing, gain staging, and mastering through animated visuals.
+An interactive audio signal flow visualization. Learn mixing, bus routing, gain staging, and mastering through animated visuals — then check the result against the platform you are going to upload to.
 
 Live site: **https://prathvirajkodachadri.github.io/Signal-Flow-Studio/**
+
+## Built around one question: where are you uploading?
+
+Everything in a session is derived from the **delivery target**. The default is
+**YouTube + Spotify** — one master that has to survive both pipelines:
+
+| Destination | Integrated | True peak | Mix-bus peak | Normalization |
+|---|---|---|---|---|
+| **YouTube + Spotify** (default) | -14 LUFS | -1.0 dBTP | -6 to -3 dBFS | Spotify up/down, YouTube down-only |
+| YouTube | -14 LUFS | -1.0 dBTP | -6 to -3.5 dBFS | Down-only (quiet uploads stay quiet) |
+| Spotify | -14 LUFS | -1.0 dBTP (-2.0 if louder than -14) | -6 to -3 dBFS | Up and down |
+| Apple Music | -16 LUFS | -1.0 dBTP | -8 to -4 dBFS | Sound Check |
+| SoundCloud / Bandcamp | -14 LUFS | -1.0 dBTP | -6 to -3 dBFS | ~ -14 LUFS |
+| Reels / Shorts / TikTok | -14 LUFS | -1.5 dBTP | -6 to -3.5 dBFS | Down-only, heavy encode |
+| Broadcast (EBU R128) | -23 LUFS | -1.0 dBTP | -12 to -8 dBFS | Fixed delivery spec |
+
+Changing the destination changes the session:
+
+- **Signal flow** grows a stage 8 — *Delivery* — after the pre-master, so the
+  chain now reads Source → Inserts → Fader/Pan → Sends → Subgroups → Mix Bus →
+  Pre-Master → Platform encode.
+- Stations 1-4 (gain staging, inserts, faders, sends) are **universal** and stay
+  at -18/-16/-14/-18 dBFS. Stages 5-8 are **platform-set**: subgroup bus
+  windows, mix-bus headroom, limiter ceiling and LUFS target all move.
+- Every channel and subgroup window shifts by the platform's trim, and the
+  upload check re-runs (LUFS, true peak, PLR, limiter budget and the exact dB
+  each platform will turn the master up or down by).
+
+### The delivery model
+
+`src/data/platforms.ts` models the mastering chain that reaches the platform:
+
+- makeup gain needed to hit the true-peak ceiling (6 dB is the transparent
+  budget — that is why the mix-bus window is -6 to -3 dBFS),
+- crest-factor loss when a mix arrives too hot and peaks get shaved,
+- integrated loudness = true peak − effective crest,
+- what each platform's normalizer then does to that master.
+
+## Indian songs & styles
+
+The style picker has an **Indian Songs & Styles** group with eight presets, each
+shipped with reference songs to A/B against:
+
+- **Bollywood / Filmi Pop** — strings, dholak, tabla, harmonium, bansuri, playback vocal
+- **Punjabi / Bhangra** — dhol, tumbi, 808, chant-along choruses
+- **Hindustani Classical** — khayal vocal, tabla, tanpura, sarangi (wide dynamics, -16 to -18 LUFS)
+- **Carnatic Classical** — kriti vocal, mridangam, ghatam/kanjeera, veena, sruti
+- **Sufi / Ghazal / Qawwali** — harmonium-led party vocals, hand percussion, long halls
+- **Bhajan / Devotional** — call-and-response, bells, temple ambience
+- **Indian Indie / Indie-Pop** — live kit, warm bass, guitars, Hindi/English vocals
+- **South Indian Film** — layered folk percussion, brass stabs, mass vocals
+
+The instrument library includes **tabla, dholak, dhol, mridangam, ghatam,
+kanjeera, sitar, sarod, sarangi, veena, santoor, bansuri, shehnai, harmonium,
+tanpura, tumbi** plus playback, Hindustani and Carnatic voices — each with its
+own dB window, pan position, frequency range and suggested processing. The
+Visual Guides tab has a dedicated **Indian Songs & Styles** page with the full
+instrument level table, mixing notes and release checklist.
 
 ## Tech stack
 
