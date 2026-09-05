@@ -14,13 +14,14 @@ import {
 } from '../data';
 
 type GuideTab =
-  | 'recording' | 'mixing' | 'mastering' | 'gainstaging' | 'routing'
+  | 'signalpath' | 'recording' | 'mixing' | 'mastering' | 'gainstaging' | 'routing'
   | 'delivery' | 'indian';
 
 export function Guides() {
-  const [activeTab, setActiveTab] = useState<GuideTab>('recording');
+  const [activeTab, setActiveTab] = useState<GuideTab>('signalpath');
 
   const tabs: { id: GuideTab; label: string; icon: string; color: string }[] = [
+    { id: 'signalpath', label: '0. Full Signal Path', icon: '🔗', color: '#00F5D4' },
     { id: 'recording', label: '1. Recording Guide', icon: '🎙️', color: '#06D6A0' },
     { id: 'mixing', label: '2. Mixing Guide', icon: '🎚️', color: '#3A86FF' },
     { id: 'mastering', label: '3. Mastering Guide', icon: '✨', color: '#FFD700' },
@@ -75,6 +76,7 @@ export function Guides() {
 
       {/* Guide Content Display */}
       <AnimatePresence mode="wait">
+        {activeTab === 'signalpath' && <SignalPathGuide key="sp" />}
         {activeTab === 'recording' && <RecordingGuide key="rec" />}
         {activeTab === 'mixing' && <MixingGuide key="mix" />}
         {activeTab === 'mastering' && <MasteringGuide key="mst" />}
@@ -84,6 +86,500 @@ export function Guides() {
         {activeTab === 'indian' && <IndianMusicGuide key="ind" />}
       </AnimatePresence>
     </div>
+  );
+}
+
+/* ========================================================================== */
+/* 0. FULL SIGNAL PATH — LEVEL MAP                                            */
+/*                                                                            */
+/* The whole production chain on one page: raw recording → professional       */
+/* output, with the level to aim for at every station and the one rule that   */
+/* station exists to enforce.                                                 */
+/* ========================================================================== */
+
+/** dB scale shared by every little window bar in the level map. */
+const PATH_SCALE: [number, number] = [-30, 0];
+
+interface PathLevel {
+  label: string;
+  value: string;
+  /** dB window drawn on the scale, e.g. [-12, -6]. */
+  window?: [number, number];
+  /** Single dB point drawn on the scale, e.g. a -1.0 dBTP ceiling. */
+  marker?: number;
+  /** 'text' keeps the value neutral white instead of the stage colour. */
+  tone?: 'db' | 'text';
+}
+
+interface PathStage {
+  id: string;
+  icon: string;
+  name: string;
+  color: string;
+  /** Processing order, rendered as chips joined by arrows. */
+  chain?: string[];
+  levels?: PathLevel[];
+  /** Short factual bullets (used by the pre-master). */
+  points?: string[];
+  note?: string;
+  /** Closing station gets a live waveform instead of numbers. */
+  waveform?: boolean;
+}
+
+const SIGNAL_PATH_STAGES: PathStage[] = [
+  {
+    id: 'raw',
+    icon: '🎙️',
+    name: 'RAW RECORDING',
+    color: '#06D6A0',
+    levels: [
+      { label: 'Average:', value: '≈ −18 dBFS', marker: -18 },
+      { label: 'Typical Peak:', value: '≈ −12 to −10 dBFS', window: [-12, -10] },
+    ],
+    note: 'Record cleanly with sufficient headroom.',
+  },
+  {
+    id: 'input',
+    icon: '🎛️',
+    name: 'INPUT GAIN / PRE-GAIN',
+    color: '#00F5D4',
+    levels: [{ label: 'Average:', value: '≈ −18 dBFS', marker: -18 }],
+    note: 'Set the signal level before processing.',
+  },
+  {
+    id: 'inserts',
+    icon: '🎚️',
+    name: 'INSERT PROCESSING',
+    color: '#3A86FF',
+    chain: ['EQ', 'Compression', 'Saturation', 'Other FX'],
+    levels: [
+      { label: 'Input:', value: '≈ −18 dBFS average', marker: -18 },
+      { label: 'Output:', value: 'Level-match for A/B comparison', tone: 'text' },
+    ],
+    note: 'Process the sound without unnecessarily increasing its loudness.',
+  },
+  {
+    id: 'channel',
+    icon: '🎚️',
+    name: 'CHANNEL / TRACK',
+    color: '#8338EC',
+    levels: [{ label: 'Peak:', value: '≈ −12 to −6 dBFS*', window: [-12, -6] }],
+    note: 'Set the fader according to the musical balance.',
+  },
+  {
+    id: 'group',
+    icon: '🎛️',
+    name: 'GROUP / INSTRUMENT BUS',
+    color: '#FF006E',
+    levels: [{ label: 'Peak:', value: '≈ −12 to −6 dBFS*', window: [-12, -6] }],
+    note: 'Combine related instruments while maintaining sufficient headroom.',
+  },
+  {
+    id: 'mixbus',
+    icon: '🎚️',
+    name: 'MIX BUS',
+    color: '#FFD166',
+    levels: [{ label: 'Typical working peak:', value: '≈ −6 to −3 dBFS*', window: [-6, -3] }],
+    note: 'Maintain headroom while the complete arrangement plays together.',
+  },
+  {
+    id: 'premaster',
+    icon: '📦',
+    name: 'PREMASTER',
+    color: '#FF9F1C',
+    points: ['No clipping', 'Preserve dynamics', 'Maintain practical mastering headroom'],
+    note: 'Avoid unnecessary limiting.',
+  },
+  {
+    id: 'mastering',
+    icon: '🎚️',
+    name: 'MASTERING',
+    color: '#FFD700',
+    chain: [
+      'EQ',
+      'Dynamic EQ / Compression (if required)',
+      'Saturation / Clipping (if required)',
+      'Limiting',
+    ],
+    note: 'Shape the final tonal balance, dynamics and level.',
+  },
+  {
+    id: 'final',
+    icon: '🔊',
+    name: 'FINAL MASTER',
+    color: '#FF2D55',
+    levels: [
+      { label: 'True Peak Ceiling:', value: '≈ −1.0 dBTP', marker: -1 },
+      { label: 'LUFS:', value: 'Genre / arrangement dependent', tone: 'text' },
+    ],
+    note: 'Final loudness is chosen according to the music, not an arbitrary LUFS number.',
+  },
+  {
+    id: 'output',
+    icon: '🎵',
+    name: 'PROFESSIONAL OUTPUT',
+    color: '#06D6A0',
+    waveform: true,
+    note: 'Clean, dynamic and loud on purpose — ready for the platform.',
+  },
+];
+
+/** The six moves the whole path is built from. */
+const PATH_PRINCIPLES = [
+  { label: 'HEALTHY LEVEL', hint: 'Start near −18 dBFS', color: '#06D6A0' },
+  { label: 'PROCESS', hint: 'Shape the sound, do not inflate it', color: '#3A86FF' },
+  { label: 'LEVEL-MATCH', hint: 'A/B every plugin at equal loudness', color: '#00F5D4' },
+  { label: 'BALANCE', hint: 'Faders follow the musical balance', color: '#8338EC' },
+  { label: 'HEADROOM', hint: 'Leave the master room to work', color: '#FFD166' },
+  { label: 'MASTER', hint: 'Loudness serves the song, not the meter', color: '#FF2D55' },
+];
+
+/** Small horizontal scale bar: where this station's level window sits. */
+function PathLevelScale({
+  window: win,
+  marker,
+  color,
+}: {
+  window?: [number, number];
+  marker?: number;
+  color: string;
+}) {
+  const [min, max] = PATH_SCALE;
+  const pct = (db: number) =>
+    ((Math.max(min, Math.min(max, db)) - min) / (max - min)) * 100;
+
+  return (
+    <div className="relative h-1.5 rounded-full bg-white/5 border border-white/5 overflow-hidden">
+      {/* Hot region above -3 dBFS */}
+      <div
+        className="absolute top-0 bottom-0 bg-red-500/25"
+        style={{ left: `${pct(-3)}%`, right: 0 }}
+      />
+      {/* -18 dBFS (0 VU) calibration reference */}
+      <div
+        className="absolute top-0 bottom-0 w-px bg-emerald-400/50"
+        style={{ left: `${pct(-18)}%` }}
+      />
+      {win && (
+        <div
+          className="absolute top-0 bottom-0 rounded-full"
+          style={{
+            left: `${pct(win[0])}%`,
+            width: `${Math.max(pct(win[1]) - pct(win[0]), 2.5)}%`,
+            background: color,
+            boxShadow: `0 0 8px ${color}90`,
+          }}
+        />
+      )}
+      {marker !== undefined && (
+        <div
+          className="absolute top-0 bottom-0 w-[3px] rounded-full"
+          style={{ left: `${pct(marker)}%`, background: color, boxShadow: `0 0 8px ${color}` }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Glowing ↓ between two stations. */
+function PathConnector({ from, to }: { from: string; to: string }) {
+  return (
+    <div className="flex flex-col items-center py-0.5" aria-hidden="true">
+      <div className="w-px h-2.5" style={{ background: `linear-gradient(${from}00, ${from})` }} />
+      <div className="text-[12px] leading-none font-mono" style={{ color: `${to}cc` }}>
+        ↓
+      </div>
+      <div className="w-px h-2.5" style={{ background: `linear-gradient(${to}, ${to}00)` }} />
+    </div>
+  );
+}
+
+/** One station of the level map. */
+function PathStageNode({ stage, index }: { stage: PathStage; index: number }) {
+  const isLast = index === SIGNAL_PATH_STAGES.length - 1;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: Math.min(index * 0.045, 0.4), duration: 0.25 }}
+      className="relative overflow-hidden p-4 pl-5 rounded-2xl border"
+      style={{
+        borderColor: `${stage.color}35`,
+        background: `linear-gradient(135deg, ${stage.color}12 0%, rgba(0,0,0,0.35) 60%)`,
+      }}
+    >
+      {/* Left accent rail */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-[3px]"
+        style={{ background: stage.color, opacity: 0.75 }}
+      />
+
+      {/* Station header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span
+            className="w-9 h-9 shrink-0 rounded-xl flex items-center justify-center text-lg leading-none border"
+            style={{ background: `${stage.color}18`, borderColor: `${stage.color}40` }}
+          >
+            {stage.icon}
+          </span>
+          <div className="min-w-0">
+            <div className="text-[8px] font-mono text-white/30 tracking-[0.2em]">
+              STAGE {String(index + 1).padStart(2, '0')}
+            </div>
+            <div
+              className="text-sm font-bold tracking-wide leading-tight"
+              style={{ color: stage.color, fontFamily: 'Outfit, sans-serif' }}
+            >
+              {stage.name}
+            </div>
+          </div>
+        </div>
+        {isLast && (
+          <span className="shrink-0 text-[8px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+            DELIVERED
+          </span>
+        )}
+      </div>
+
+      {/* Processing order */}
+      {stage.chain && (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {stage.chain.map((step, i) => (
+            <span key={step} className="flex items-center gap-1.5">
+              <span
+                className="text-[9px] font-mono px-2 py-1 rounded-lg border"
+                style={{
+                  background: `${stage.color}12`,
+                  borderColor: `${stage.color}30`,
+                  color: `${stage.color}`,
+                }}
+              >
+                {step}
+              </span>
+              {i < stage.chain!.length - 1 && (
+                <span className="text-[10px] font-mono text-white/25">→</span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Level targets */}
+      {stage.levels && (
+        <div className="mt-3 space-y-2">
+          {stage.levels.map(level => (
+            <div key={level.label} className="font-mono">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="text-[10px] text-white/40 w-[8.5rem] shrink-0">{level.label}</span>
+                <span
+                  className="text-[11px] font-bold"
+                  style={{ color: level.tone === 'text' ? 'rgba(255,255,255,0.8)' : stage.color }}
+                >
+                  {level.value}
+                </span>
+              </div>
+              {(level.window || level.marker !== undefined) && (
+                <div className="mt-1 sm:pl-[8.5rem]">
+                  <PathLevelScale window={level.window} marker={level.marker} color={stage.color} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Factual bullets */}
+      {stage.points && (
+        <ul className="mt-3 space-y-1">
+          {stage.points.map(point => (
+            <li key={point} className="flex items-center gap-2 text-[10px] font-mono text-white/65">
+              <span style={{ color: stage.color }}>✓</span>
+              <span>{point}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Live waveform on the closing station */}
+      {stage.waveform && (
+        <div className="mt-3 h-12 rounded-xl bg-black/40 border border-white/5 flex items-center justify-center overflow-hidden">
+          <MiniWaveform color={stage.color} width={520} height={34} />
+        </div>
+      )}
+
+      {/* The one rule for this station */}
+      {stage.note && (
+        <p
+          className="mt-3 pl-2.5 border-l-2 text-[11px] font-sans text-white/60 leading-relaxed"
+          style={{ borderColor: `${stage.color}55` }}
+        >
+          {stage.note}
+        </p>
+      )}
+    </motion.div>
+  );
+}
+
+function SignalPathGuide() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -15 }}
+      className="space-y-6"
+    >
+      {/* Banner */}
+      <div className="p-6 rounded-3xl bg-gradient-to-br from-cyan-400/10 via-black/40 to-black/60 border border-cyan-400/30 shadow-2xl">
+        <div className="flex flex-col lg:flex-row items-start justify-between gap-6">
+          <div className="space-y-2 max-w-2xl">
+            <span className="px-2.5 py-0.5 rounded-full bg-cyan-400/15 text-cyan-300 border border-cyan-400/25 text-[10px] font-mono font-bold">
+              RAW RECORDING → PROFESSIONAL OUTPUT
+            </span>
+            <h3 className="text-xl font-bold text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>
+              The whole signal path, with the level to aim for at every stage
+            </h3>
+            <p className="text-xs text-white/70 font-sans leading-relaxed">
+              Ten stations, one job each. The signal stays near{' '}
+              <strong className="text-emerald-300">−18 dBFS</strong> while it is recorded and processed,
+              climbs gently through channels and buses, and only the mastering limiter is allowed to
+              approach the ceiling — with the true peak stopping at{' '}
+              <strong className="text-rose-300">−1.0 dBTP</strong>. Loudness at the end is a musical
+              decision, not a number to hit.
+            </p>
+          </div>
+
+          {/* At-a-glance readout */}
+          <div className="shrink-0 grid grid-cols-3 gap-2 font-mono">
+            {[
+              { k: 'NOMINAL', v: '−18', u: 'dBFS', c: '#06D6A0' },
+              { k: 'MIX BUS', v: '−6 / −3', u: 'dBFS', c: '#FFD166' },
+              { k: 'CEILING', v: '−1.0', u: 'dBTP', c: '#FF2D55' },
+            ].map(item => (
+              <div
+                key={item.k}
+                className="px-3 py-2.5 rounded-2xl bg-black/50 border text-center"
+                style={{ borderColor: `${item.c}35` }}
+              >
+                <div className="text-[7px] text-white/35 tracking-[0.15em]">{item.k}</div>
+                <div className="text-base font-black leading-tight" style={{ color: item.c }}>
+                  {item.v}
+                </div>
+                <div className="text-[8px] text-white/40">{item.u}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Chain + principles */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+        {/* The level map */}
+        <div className="lg:col-span-2 p-5 rounded-3xl bg-black/40 border border-white/10">
+          <div className="flex flex-wrap items-end justify-between gap-2 pb-3 mb-4 border-b border-white/5">
+            <h4 className="text-xs font-mono font-bold text-white/80 uppercase">
+              Signal path &amp; level map
+            </h4>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[8px] font-mono text-white/35">
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-1 rounded-full bg-white/40" /> target window
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-px h-2.5 bg-emerald-400/60" /> −18 dBFS (0 VU)
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-1 rounded-full bg-red-500/40" /> hot
+              </span>
+              <span>scale −30 … 0 dBFS</span>
+            </div>
+          </div>
+
+          {SIGNAL_PATH_STAGES.map((stage, i) => (
+            <div key={stage.id}>
+              <PathStageNode stage={stage} index={i} />
+              {i < SIGNAL_PATH_STAGES.length - 1 && (
+                <PathConnector from={stage.color} to={SIGNAL_PATH_STAGES[i + 1].color} />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Sidebar */}
+        <div className="space-y-4 lg:sticky lg:top-0">
+          {/* Six principles */}
+          <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+            <h4 className="text-xs font-mono font-bold text-white/80 uppercase">
+              Read it as six moves
+            </h4>
+            {PATH_PRINCIPLES.map((p, i) => (
+              <div key={p.label}>
+                <div
+                  className="flex items-center gap-2 p-2 rounded-xl border"
+                  style={{ background: `${p.color}0d`, borderColor: `${p.color}28` }}
+                >
+                  <span
+                    className="w-5 h-5 shrink-0 rounded-md flex items-center justify-center text-[9px] font-mono font-bold"
+                    style={{ background: `${p.color}25`, color: p.color }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0">
+                    <span
+                      className="block text-[11px] font-mono font-bold tracking-wide leading-tight"
+                      style={{ color: p.color }}
+                    >
+                      {p.label}
+                    </span>
+                    <span className="block text-[9px] font-sans text-white/45 leading-tight">
+                      {p.hint}
+                    </span>
+                  </span>
+                </div>
+                {i < PATH_PRINCIPLES.length - 1 && (
+                  <div className="text-center text-[10px] leading-none text-white/20 py-0.5 font-mono">
+                    ↓
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Footnote for the starred windows */}
+          <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-1.5">
+            <div className="text-[10px] font-mono font-bold text-white/60 uppercase">
+              * About those peak windows
+            </div>
+            <p className="text-[11px] font-sans text-white/55 leading-relaxed">
+              The starred numbers are working references, not a meter to hit to the decimal. Genre,
+              arrangement and track count decide how much a channel, a group or the mix bus actually
+              needs. What does not change: keep the front end near −18 dBFS, never let any stage clip,
+              and pick the final loudness from the music instead of from an arbitrary LUFS number.
+            </p>
+          </div>
+
+          {/* Where the path usually breaks */}
+          <div className="p-4 rounded-2xl bg-red-500/5 border border-red-500/20 space-y-2">
+            <div className="text-xs font-bold text-red-400 flex items-center gap-1.5">
+              <AlertTriangle size={14} /> Where the path usually breaks
+            </div>
+            <ul className="space-y-1.5">
+              {[
+                'Recording hot, then trying to fix it with the channel fader.',
+                'An insert that is louder on output than on input — the A/B is lost.',
+                'Limiting the premaster, so the mastering chain has nothing left to shape.',
+                'Chasing a LUFS number instead of the song, and paying for it in dynamics.',
+              ].map(item => (
+                <li key={item} className="text-[10px] font-mono text-white/60 flex gap-1.5">
+                  <span className="text-red-400">✕</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
