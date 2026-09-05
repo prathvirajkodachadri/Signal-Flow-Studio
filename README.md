@@ -41,6 +41,33 @@ Changing the destination changes the session:
 - integrated loudness = true peak − effective crest,
 - what each platform's normalizer then does to that master.
 
+## Visual Guides
+
+The **Visual Guides** tab opens on **Full Signal Path** — the whole chain on one
+page, from 🎙️ raw recording to 🎵 professional output. Each of the ten stations
+carries its target level (drawn as a window on a −30 … 0 dBFS scale), its
+processing order and the one rule it exists to enforce:
+
+| Station | Target |
+|---|---|
+| Raw recording | ≈ −18 dBFS average, ≈ −12 to −10 dBFS typical peak |
+| Input gain / pre-gain | ≈ −18 dBFS average |
+| Insert processing (EQ → comp → saturation → FX) | in ≈ −18 dBFS, out level-matched for A/B |
+| Channel / track | ≈ −12 to −6 dBFS peak * |
+| Group / instrument bus | ≈ −12 to −6 dBFS peak * |
+| Mix bus | ≈ −6 to −3 dBFS typical working peak * |
+| Premaster | no clipping, dynamics preserved, mastering headroom kept |
+| Mastering | EQ → dynamic EQ/comp → saturation/clipping → limiting (as required) |
+| Final master | ≈ −1.0 dBTP ceiling, LUFS chosen from the genre and arrangement |
+
+\* Working references, not numbers to meter to the decimal — the sidebar
+footnote says so, and the same sidebar reduces the whole path to six moves:
+healthy level → process → level-match → balance → headroom → master.
+
+The remaining pages go deeper on each stage: Recording, Mixing, Mastering,
+YouTube + Spotify Delivery, Indian Songs & Styles, Gain Staging Rules and Bus
+Routing Logic.
+
 ## Indian songs & styles
 
 The style picker has an **Indian Songs & Styles** group with eight presets, each
