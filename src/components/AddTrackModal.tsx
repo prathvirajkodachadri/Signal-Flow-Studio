@@ -26,8 +26,17 @@ export function AddTrackModal({ isOpen, onClose, onAddTrack, onAddCustomTrack }:
 
   if (!isOpen) return null;
 
+  // Category filtering honours the explicit type lists (Indian groups share
+  // a category with their Western counterparts).
+  const activeCategoryTypes =
+    selectedCategory === 'all'
+      ? null
+      : (TRACK_CATEGORIES.find(c => c.id === selectedCategory)?.types ?? null);
+
   const filteredTrackTypes = Object.values(TRACK_DEFS).filter(def => {
-    const matchesCat = selectedCategory === 'all' || def.category === selectedCategory;
+    const matchesCat =
+      selectedCategory === 'all' ||
+      (activeCategoryTypes ? activeCategoryTypes.includes(def.type) : def.category === selectedCategory);
     const matchesSearch = def.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       def.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       def.shortLabel.toLowerCase().includes(searchQuery.toLowerCase());
@@ -149,7 +158,7 @@ export function AddTrackModal({ isOpen, onClose, onAddTrack, onAddCustomTrack }:
                   </button>
                   {TRACK_CATEGORIES.map(cat => (
                     <button
-                      key={cat.id}
+                      key={`${cat.id}-${cat.label}`}
                       onClick={() => setSelectedCategory(cat.id)}
                       className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-mono whitespace-nowrap transition-all ${
                         selectedCategory === cat.id
@@ -158,7 +167,7 @@ export function AddTrackModal({ isOpen, onClose, onAddTrack, onAddCustomTrack }:
                       }`}
                     >
                       <span>{cat.icon}</span>
-                      <span>{cat.label.split(' ')[0]}</span>
+                      <span>{cat.short ?? cat.label.split(' ')[0]}</span>
                     </button>
                   ))}
                 </div>

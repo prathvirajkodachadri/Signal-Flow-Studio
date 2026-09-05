@@ -1,6 +1,31 @@
-export type Genre = 'pop' | 'rock' | 'hiphop' | 'electronic' | 'acoustic' | 'cinematic' | 'podcast' | 'custom';
+/**
+ * Delivery platform model — YouTube + Spotify is the default target because
+ * that is where a release is uploaded. Everything downstream (signal flow
+ * stages, subgroup/bus dB windows, master ceiling, LUFS analysis) is derived
+ * from the selected platform.
+ */
+export {
+  PLATFORM_PRESETS, DEFAULT_PLATFORM, getPlatform, getPlatformLabel,
+  getSignalFlowStages, getLevelPlan, applyPlatformTrim, busTargetRange,
+  trackTargetRange, analyzeDelivery, getDeliveryStatusColor, getDeliveryStatusLabel,
+} from './platforms';
+export type {
+  PlatformId, PlatformSpec, NormalizationMode, SignalFlowStage, PlatformLevelPlan,
+  DeliveryStatus, DeliveryAnalysis, DeliveryCheck, PlatformResult,
+} from './platforms';
+import {
+  DEFAULT_PLATFORM, trackTargetRange,
+  type PlatformId,
+} from './platforms';
 
-export type TrackCategory = 'drums' | 'bass' | 'instruments' | 'vocals' | 'fx' | 'speech';
+export type Genre =
+  | 'pop' | 'rock' | 'hiphop' | 'electronic' | 'acoustic' | 'cinematic' | 'podcast' | 'custom'
+  // Indian styles
+  | 'bollywood' | 'punjabi' | 'hindustani' | 'carnatic' | 'sufi' | 'bhajan' | 'indianIndie' | 'southIndian';
+
+export type TrackCategory =
+  | 'drums' | 'bass' | 'instruments' | 'vocals' | 'fx' | 'speech'
+  | 'indianPercussion' | 'indianMelodic';
 
 export type TrackType =
   | 'kick' | 'snare' | 'hihat' | 'overheads' | 'toms' | 'percussion'
@@ -8,7 +33,23 @@ export type TrackType =
   | 'guitar' | 'acousticGuitar' | 'piano' | 'synth' | 'pad' | 'strings' | 'brass'
   | 'leadVocal' | 'bgVocal' | 'harmony' | 'adlibs'
   | 'fx' | 'aux' | 'reverbReturn' | 'delayReturn'
-  | 'dialogue' | 'hostVocal' | 'guestVocal' | 'sfx' | 'ambient' | 'foley';
+  | 'dialogue' | 'hostVocal' | 'guestVocal' | 'sfx' | 'ambient' | 'foley'
+  // Indian instruments & voices
+  | 'tabla' | 'dholak' | 'dhol' | 'mridangam' | 'ghatam' | 'kanjeera'
+  | 'sitar' | 'sarod' | 'sarangi' | 'veena' | 'santoor' | 'bansuri' | 'shehnai'
+  | 'harmonium' | 'tanpura' | 'tumbi'
+  | 'hindustaniVocal' | 'carnaticVocal' | 'playbackVocal';
+
+export type GenreGroup = 'global' | 'indian';
+
+/** Indian-repertoire flag used for genre grouping and regional guidance. */
+export const INDIAN_GENRES: Genre[] = [
+  'bollywood', 'punjabi', 'hindustani', 'carnatic', 'sufi', 'bhajan', 'indianIndie', 'southIndian',
+];
+
+export function isIndianGenre(genre: Genre | null): boolean {
+  return !!genre && INDIAN_GENRES.includes(genre);
+}
 
 export type BusType = 'drums' | 'bass' | 'instruments' | 'vocals' | 'fx' | 'music' | 'dialogue' | 'sfx' | 'mixBus' | 'preMaster';
 
@@ -90,6 +131,16 @@ export interface GenrePreset {
   bpm: number;
   key: string;
   tracks: TrackType[];
+  /** Global repertoire or Indian repertoire. */
+  group: GenreGroup;
+  /** Region / language tag shown on the card. */
+  region?: string;
+  /** Well-known reference songs to A/B your mix against. */
+  referenceSongs?: string[];
+  /** Genre-specific mixing guidance. */
+  mixNotes?: string;
+  /** Crest factor (true peak minus LUFS) typical of this repertoire. */
+  crestDb?: number;
 }
 
 export const TRACK_DEFS: Record<TrackType, TrackDef> = {
@@ -669,6 +720,388 @@ export const TRACK_DEFS: Record<TrackType, TrackDef> = {
       { name: 'Dynamic Notch', type: 'eq', enabled: false, param: 'Tame clicks' },
     ],
   },
+
+  /* ====================================================================== *
+   *  INDIAN PERCUSSION                                                      *
+   * ====================================================================== */
+  tabla: {
+    type: 'tabla',
+    name: 'Tabla (Dayan / Bayan)',
+    category: 'indianPercussion',
+    icon: '🥁',
+    color: '#FF9933',
+    bus: 'drums',
+    dbRange: [-18, -12],
+    targetPeak: -12,
+    targetRms: -20,
+    shortLabel: 'TB',
+    frequencyRange: '60 Hz – 8 kHz',
+    panDefault: -0.15,
+    description: 'Hand-played pair: bright treble dayan + resonant bass bayan. Keep the bayan mono and let the bol strokes breathe.',
+    suggestedPlugins: [
+      { name: 'HPF 45Hz', type: 'eq', enabled: true, param: 'Clean bayan rumble' },
+      { name: 'Transient Comp', type: 'comp', enabled: true, param: '3:1 med atk' },
+      { name: 'Small Plate', type: 'reverb', enabled: false, param: '1.2s room' },
+    ],
+  },
+  dholak: {
+    type: 'dholak',
+    name: 'Dholak',
+    category: 'indianPercussion',
+    icon: '🪘',
+    color: '#F4A261',
+    bus: 'drums',
+    dbRange: [-18, -12],
+    targetPeak: -12,
+    targetRms: -19,
+    shortLabel: 'DK',
+    frequencyRange: '70 Hz – 6 kHz',
+    panDefault: 0.2,
+    description: 'Folk double-headed drum driving keherwa/bhajan grooves. Mid-forward, sits between the tabla and the kick.',
+    suggestedPlugins: [
+      { name: 'Body EQ', type: 'eq', enabled: true, param: '+2dB 180Hz' },
+      { name: 'Fast FET', type: 'comp', enabled: true, param: '4:1 fast' },
+    ],
+  },
+  dhol: {
+    type: 'dhol',
+    name: 'Punjabi Dhol',
+    category: 'indianPercussion',
+    icon: '🪘',
+    color: '#E76F51',
+    bus: 'drums',
+    dbRange: [-16, -10],
+    targetPeak: -10,
+    targetRms: -15,
+    shortLabel: 'DH',
+    frequencyRange: '40 Hz – 4 kHz',
+    panDefault: 0,
+    description: 'Huge bhangra hit: the loudest transient in an Indian mix. Sidechain the bass so the dhol owns 60-100 Hz.',
+    suggestedPlugins: [
+      { name: 'Mono Maker', type: 'eq', enabled: true, param: 'Mono < 120Hz' },
+      { name: 'Peak Control', type: 'comp', enabled: true, param: '6:1 fast 3dB GR' },
+      { name: 'HPF 40Hz', type: 'eq', enabled: true, param: 'Sub clean' },
+    ],
+  },
+  mridangam: {
+    type: 'mridangam',
+    name: 'Mridangam',
+    category: 'indianPercussion',
+    icon: '🪘',
+    color: '#C1121F',
+    bus: 'drums',
+    dbRange: [-18, -12],
+    targetPeak: -12,
+    targetRms: -20,
+    shortLabel: 'MR',
+    frequencyRange: '65 Hz – 6 kHz',
+    panDefault: -0.2,
+    description: 'Carnatic barrel drum with a long resonant decay. Gate lightly so the gumki ring does not blur fast passages.',
+    suggestedPlugins: [
+      { name: 'Resonance Tame', type: 'eq', enabled: true, param: 'Dip 220Hz' },
+      { name: 'Gentle Opto', type: 'comp', enabled: false, param: '2:1 slow' },
+    ],
+  },
+  ghatam: {
+    type: 'ghatam',
+    name: 'Ghatam (Clay Pot)',
+    category: 'indianPercussion',
+    icon: '🏺',
+    color: '#D68C45',
+    bus: 'drums',
+    dbRange: [-22, -16],
+    targetPeak: -16,
+    targetRms: -24,
+    shortLabel: 'GH',
+    frequencyRange: '150 Hz – 12 kHz',
+    panDefault: 0.3,
+    description: 'Percussive clay pot with a hollow mid bark. Sits above the mridangam, never below it.',
+    suggestedPlugins: [
+      { name: 'HPF 120Hz', type: 'eq', enabled: true, param: 'Mud cut' },
+      { name: 'Short Room', type: 'reverb', enabled: true, param: '0.8s small' },
+    ],
+  },
+  kanjeera: {
+    type: 'kanjeera',
+    name: 'Kanjeera / Kanjira',
+    category: 'indianPercussion',
+    icon: '◍',
+    color: '#B08968',
+    bus: 'drums',
+    dbRange: [-24, -18],
+    targetPeak: -18,
+    targetRms: -25,
+    shortLabel: 'KJ',
+    frequencyRange: '200 Hz – 14 kHz',
+    panDefault: 0.35,
+    description: 'Frame drum with jingles — the Carnatic shaker layer. Keep it bright and 4-6 dB under the mridangam.',
+    suggestedPlugins: [
+      { name: 'HPF 250Hz', type: 'eq', enabled: true, param: 'Cut lows' },
+    ],
+  },
+
+  /* ====================================================================== *
+   *  INDIAN MELODIC INSTRUMENTS                                             *
+   * ====================================================================== */
+  sitar: {
+    type: 'sitar',
+    name: 'Sitar',
+    category: 'indianMelodic',
+    icon: '🪕',
+    color: '#FFB703',
+    bus: 'instruments',
+    dbRange: [-20, -14],
+    targetPeak: -14,
+    targetRms: -21,
+    shortLabel: 'SI',
+    frequencyRange: '80 Hz – 10 kHz',
+    panDefault: -0.4,
+    description: 'Sympathetic-string shimmer with a long decay. Control 2-4 kHz bite and leave the jawari buzz intact.',
+    suggestedPlugins: [
+      { name: 'De-Harsh EQ', type: 'eq', enabled: true, param: 'Dip 3.2kHz' },
+      { name: 'Hall Reverb', type: 'reverb', enabled: true, param: '2.6s hall' },
+      { name: 'HPF 80Hz', type: 'eq', enabled: true, param: 'Clean boom' },
+    ],
+  },
+  sarod: {
+    type: 'sarod',
+    name: 'Sarod',
+    category: 'indianMelodic',
+    icon: '🪕',
+    color: '#FB8500',
+    bus: 'instruments',
+    dbRange: [-20, -14],
+    targetPeak: -14,
+    targetRms: -21,
+    shortLabel: 'SR',
+    frequencyRange: '70 Hz – 8 kHz',
+    panDefault: 0.35,
+    description: 'Metal-bodied, deep and percussive with a strong midrange. Slightly darker than the sitar.',
+    suggestedPlugins: [
+      { name: 'Mid Lift', type: 'eq', enabled: true, param: '+1.5dB 700Hz' },
+      { name: 'Plate Reverb', type: 'reverb', enabled: true, param: '1.8s plate' },
+    ],
+  },
+  sarangi: {
+    type: 'sarangi',
+    name: 'Sarangi',
+    category: 'indianMelodic',
+    icon: '🎻',
+    color: '#A98467',
+    bus: 'instruments',
+    dbRange: [-21, -15],
+    targetPeak: -15,
+    targetRms: -22,
+    shortLabel: 'SG',
+    frequencyRange: '150 Hz – 6 kHz',
+    panDefault: -0.3,
+    description: 'Bowed, vocal-like tone that shadows the singer. Roll off above 6 kHz or it fights the vocal.',
+    suggestedPlugins: [
+      { name: 'Low Cut 140Hz', type: 'eq', enabled: true, param: 'Body control' },
+      { name: 'Warm Comp', type: 'comp', enabled: true, param: '2:1 slow' },
+    ],
+  },
+  veena: {
+    type: 'veena',
+    name: 'Veena',
+    category: 'indianMelodic',
+    icon: '🪕',
+    color: '#8ECAE6',
+    bus: 'instruments',
+    dbRange: [-20, -14],
+    targetPeak: -14,
+    targetRms: -21,
+    shortLabel: 'VN',
+    frequencyRange: '80 Hz – 8 kHz',
+    panDefault: 0.3,
+    description: 'Saraswati/Carnatic veena: plucked, resonant and deep. Gamaka bends need headroom — compress gently.',
+    suggestedPlugins: [
+      { name: 'Resonance Dip', type: 'eq', enabled: true, param: '-2dB 400Hz' },
+      { name: 'Hall Send', type: 'reverb', enabled: true, param: '2.2s hall' },
+    ],
+  },
+  santoor: {
+    type: 'santoor',
+    name: 'Santoor',
+    category: 'indianMelodic',
+    icon: '🎼',
+    color: '#48CAE4',
+    bus: 'instruments',
+    dbRange: [-21, -15],
+    targetPeak: -15,
+    targetRms: -22,
+    shortLabel: 'SN',
+    frequencyRange: '150 Hz – 12 kHz',
+    panDefault: -0.35,
+    description: 'Hammered zither with shimmering cascades. Wide stereo; keep it behind the vocal but let the sparkle through.',
+    suggestedPlugins: [
+      { name: 'Air EQ', type: 'eq', enabled: true, param: '+1.5dB 9kHz' },
+      { name: 'Big Hall', type: 'reverb', enabled: true, param: '3.0s hall' },
+    ],
+  },
+  bansuri: {
+    type: 'bansuri',
+    name: 'Bansuri (Bamboo Flute)',
+    category: 'indianMelodic',
+    icon: '♪',
+    color: '#95D5B2',
+    bus: 'instruments',
+    dbRange: [-21, -15],
+    targetPeak: -15,
+    targetRms: -22,
+    shortLabel: 'BN',
+    frequencyRange: '250 Hz – 12 kHz',
+    panDefault: 0.25,
+    description: 'Breathy bamboo flute. The air noise is part of the tone — de-ess carefully and keep the breath.',
+    suggestedPlugins: [
+      { name: 'Breath HPF', type: 'eq', enabled: true, param: 'HPF 220Hz' },
+      { name: 'Air Shelf', type: 'eq', enabled: true, param: '+1dB 10kHz' },
+      { name: 'Slap Delay', type: 'delay', enabled: false, param: '1/8 short' },
+    ],
+  },
+  shehnai: {
+    type: 'shehnai',
+    name: 'Shehnai',
+    category: 'indianMelodic',
+    icon: '🎷',
+    color: '#E9C46A',
+    bus: 'instruments',
+    dbRange: [-19, -13],
+    targetPeak: -13,
+    targetRms: -19,
+    shortLabel: 'SH',
+    frequencyRange: '200 Hz – 8 kHz',
+    panDefault: 0.2,
+    description: 'Loud, piercing double reed for weddings and processional themes. Dynamic EQ on 2-3 kHz is essential.',
+    suggestedPlugins: [
+      { name: 'Dynamic EQ 2.6k', type: 'eq', enabled: true, param: 'Tame pierce' },
+      { name: 'FET Comp', type: 'comp', enabled: true, param: '4:1 fast' },
+      { name: 'Temple Reverb', type: 'reverb', enabled: true, param: '2.8s big' },
+    ],
+  },
+  harmonium: {
+    type: 'harmonium',
+    name: 'Harmonium',
+    category: 'indianMelodic',
+    icon: '🎹',
+    color: '#F4A261',
+    bus: 'instruments',
+    dbRange: [-21, -15],
+    targetPeak: -15,
+    targetRms: -21,
+    shortLabel: 'HM',
+    frequencyRange: '120 Hz – 6 kHz',
+    panDefault: 0,
+    description: 'Reed pump organ: the drone+melody bed of bhajan, qawwali and Sufi. Bellows noise is normal — do not gate it away.',
+    suggestedPlugins: [
+      { name: 'Bellows HPF', type: 'eq', enabled: true, param: 'HPF 110Hz' },
+      { name: 'Reed De-Harsh', type: 'eq', enabled: true, param: 'Dip 1.8kHz' },
+      { name: 'Leveler', type: 'comp', enabled: true, param: '2:1 gentle' },
+    ],
+  },
+  tanpura: {
+    type: 'tanpura',
+    name: 'Tanpura Drone',
+    category: 'indianMelodic',
+    icon: '≈',
+    color: '#52B788',
+    bus: 'instruments',
+    dbRange: [-26, -20],
+    targetPeak: -20,
+    targetRms: -26,
+    shortLabel: 'TP',
+    frequencyRange: '60 Hz – 4 kHz',
+    panDefault: 0,
+    description: 'Continuous four-string drone that defines the raga. Sits 8-12 dB under the soloist — it is a floor, not a layer.',
+    suggestedPlugins: [
+      { name: 'Drone HPF', type: 'eq', enabled: true, param: 'HPF 60Hz' },
+      { name: 'Stereo Narrow', type: 'eq', enabled: true, param: 'Keep centred' },
+    ],
+  },
+  tumbi: {
+    type: 'tumbi',
+    name: 'Tumbi',
+    category: 'indianMelodic',
+    icon: '🪕',
+    color: '#FFD166',
+    bus: 'instruments',
+    dbRange: [-20, -14],
+    targetPeak: -14,
+    targetRms: -20,
+    shortLabel: 'TU',
+    frequencyRange: '200 Hz – 5 kHz',
+    panDefault: 0.4,
+    description: 'Single-string Punjabi pluck with a sharp twang. Thin and nasal by design — do not try to make it full.',
+    suggestedPlugins: [
+      { name: 'Nasal Boost', type: 'eq', enabled: true, param: '+2dB 1.2kHz' },
+      { name: 'Fast Comp', type: 'comp', enabled: true, param: '3:1 med' },
+    ],
+  },
+
+  /* ====================================================================== *
+   *  INDIAN VOICES                                                          *
+   * ====================================================================== */
+  playbackVocal: {
+    type: 'playbackVocal',
+    name: 'Playback Vocal (Hindi / Filmi)',
+    category: 'vocals',
+    icon: '🎤',
+    color: '#FF006E',
+    bus: 'vocals',
+    dbRange: [-18, -12],
+    targetPeak: -12,
+    targetRms: -16,
+    shortLabel: 'PB',
+    frequencyRange: '100 Hz – 18 kHz',
+    panDefault: 0,
+    description: 'Bollywood/South Indian film lead. Front-and-centre, bright, with big plate or hall reverb and a tight de-esser.',
+    suggestedPlugins: [
+      { name: 'HPF 90Hz + Air', type: 'eq', enabled: true, param: 'Cut 90Hz + 12k' },
+      { name: 'De-Esser', type: 'comp', enabled: true, param: 'Tame 6-7k' },
+      { name: '2-Stage Comp', type: 'comp', enabled: true, param: 'Opto + FET' },
+      { name: 'Filmi Plate/Hall', type: 'reverb', enabled: true, param: '2.0s plate + hall' },
+    ],
+  },
+  hindustaniVocal: {
+    type: 'hindustaniVocal',
+    name: 'Hindustani Classical Vocal',
+    category: 'vocals',
+    icon: '🎤',
+    color: '#E63946',
+    bus: 'vocals',
+    dbRange: [-20, -13],
+    targetPeak: -13,
+    targetRms: -18,
+    shortLabel: 'HV',
+    frequencyRange: '100 Hz – 14 kHz',
+    panDefault: 0,
+    description: 'Khayal/bhajan lead with wide dynamics from whisper-soft alap to full-throated taan. Compress very little (1-2 dB).',
+    suggestedPlugins: [
+      { name: 'Gentle HPF 80Hz', type: 'eq', enabled: true, param: 'Room rumble' },
+      { name: 'Ride The Fader', type: 'gain', enabled: true, param: 'Manual dynamics' },
+      { name: 'Natural Hall', type: 'reverb', enabled: true, param: '2.4s concert hall' },
+    ],
+  },
+  carnaticVocal: {
+    type: 'carnaticVocal',
+    name: 'Carnatic Classical Vocal',
+    category: 'vocals',
+    icon: '🎤',
+    color: '#F72585',
+    bus: 'vocals',
+    dbRange: [-20, -13],
+    targetPeak: -13,
+    targetRms: -18,
+    shortLabel: 'CV',
+    frequencyRange: '120 Hz – 14 kHz',
+    panDefault: 0,
+    description: 'Kriti lead with intricate gamaka ornamentation. Keep it dry-ish and forward: intelligibility of the sahitya matters.',
+    suggestedPlugins: [
+      { name: 'Presence EQ', type: 'eq', enabled: true, param: '+2dB 3kHz' },
+      { name: 'Light Leveler', type: 'comp', enabled: true, param: '1.5dB GR max' },
+      { name: 'Small Hall', type: 'reverb', enabled: true, param: '1.4s hall' },
+    ],
+  },
 };
 
 export const BUS_DEFS: Record<BusType, BusDef> = {
@@ -808,6 +1241,7 @@ export const BUS_DEFS: Record<BusType, BusDef> = {
 export const GENRE_PRESETS: GenrePreset[] = [
   {
     genre: 'pop',
+    group: 'global',
     name: 'Pop Production',
     icon: '🎵',
     color: '#FF006E',
@@ -818,6 +1252,7 @@ export const GENRE_PRESETS: GenrePreset[] = [
   },
   {
     genre: 'rock',
+    group: 'global',
     name: 'Rock / Alt',
     icon: '🎸',
     color: '#EF476F',
@@ -828,6 +1263,7 @@ export const GENRE_PRESETS: GenrePreset[] = [
   },
   {
     genre: 'hiphop',
+    group: 'global',
     name: 'Hip-Hop / Trap',
     icon: '🎤',
     color: '#FB5607',
@@ -838,6 +1274,7 @@ export const GENRE_PRESETS: GenrePreset[] = [
   },
   {
     genre: 'electronic',
+    group: 'global',
     name: 'EDM / Electronic',
     icon: '🎛️',
     color: '#3A86FF',
@@ -848,6 +1285,7 @@ export const GENRE_PRESETS: GenrePreset[] = [
   },
   {
     genre: 'acoustic',
+    group: 'global',
     name: 'Acoustic / Indie',
     icon: '🎻',
     color: '#8338EC',
@@ -858,6 +1296,7 @@ export const GENRE_PRESETS: GenrePreset[] = [
   },
   {
     genre: 'cinematic',
+    group: 'global',
     name: 'Cinematic Score',
     icon: '🎬',
     color: '#FFD700',
@@ -868,6 +1307,7 @@ export const GENRE_PRESETS: GenrePreset[] = [
   },
   {
     genre: 'podcast',
+    group: 'global',
     name: 'Podcast & Voiceover',
     icon: '🎙️',
     color: '#06D6A0',
@@ -878,6 +1318,7 @@ export const GENRE_PRESETS: GenrePreset[] = [
   },
   {
     genre: 'custom',
+    group: 'global',
     name: 'Custom Session',
     icon: '✨',
     color: '#4CC9F0',
@@ -885,6 +1326,128 @@ export const GENRE_PRESETS: GenrePreset[] = [
     bpm: 120,
     key: 'Modular',
     tracks: [],
+  },
+
+  /* ===================== INDIAN REPERTOIRE ===================== */
+  {
+    genre: 'bollywood',
+    group: 'indian',
+    name: 'Bollywood / Filmi Pop',
+    icon: '🎬',
+    color: '#FF9933',
+    description: 'Orchestral strings, dholak grooves, tabla layers and a bright playback vocal up front',
+    bpm: 118,
+    key: 'Raga Bhairavi / C Major',
+    region: 'Hindi film music',
+    tracks: ['kick', 'snare', 'dholak', 'tabla', 'subBass', 'harmonium', 'bansuri', 'strings', 'synth', 'playbackVocal', 'bgVocal', 'harmony', 'reverbReturn'],
+    referenceSongs: ['Chaiyya Chaiyya — Dil Se', 'Kesariya — Brahmastra', 'Tum Hi Ho — Aashiqui 2', 'Jai Ho — Slumdog Millionaire'],
+    mixNotes: 'Strings and pads take the stereo width; the playback vocal stays dead centre with a plate plus a big hall. Sidechain the low strings under the dholak so the groove survives at -14 LUFS.',
+    crestDb: 11,
+  },
+  {
+    genre: 'punjabi',
+    group: 'indian',
+    name: 'Punjabi / Bhangra',
+    icon: '💃',
+    color: '#E76F51',
+    description: 'Dhol-driven groove, tumbi hooks, 808 low end and chant-along choruses',
+    bpm: 146,
+    key: 'B Minor',
+    region: 'Punjabi',
+    tracks: ['dhol', 'dholak', 'kick', 'snare', 'hihat', 'subBass', 'tumbi', 'harmonium', 'synth', 'playbackVocal', 'bgVocal', 'adlibs'],
+    referenceSongs: ['Tunak Tunak Tun — Daler Mehndi', 'Mundian To Bach Ke — Panjabi MC', 'Laung Da Lashkara', 'Brown Munde — AP Dhillon'],
+    mixNotes: 'The dhol is the loudest transient in the mix — mono it below 120 Hz and duck the 808 by 3-4 dB on every hit. Keep the tumbi thin; it is a hook, not a bass.',
+    crestDb: 9,
+  },
+  {
+    genre: 'hindustani',
+    group: 'indian',
+    name: 'Hindustani Classical',
+    icon: '🪕',
+    color: '#138808',
+    description: 'Raga-based khayal: solo vocal, tanpura drone, tabla, sarangi or harmonium accompaniment',
+    bpm: 80,
+    key: 'Raga Yaman',
+    region: 'North Indian classical',
+    tracks: ['hindustaniVocal', 'tabla', 'tanpura', 'sarangi', 'harmonium', 'sitar'],
+    referenceSongs: ['Raga Yaman — vilambit & drut bandish', 'Raga Bhairavi — thumri', 'Raga Malkauns — alap & gat'],
+    mixNotes: 'Compress almost nothing: 1-2 dB of gentle leveling only, and ride the fader instead. This repertoire breathes — master near -16 to -18 LUFS so the alap-to-taan dynamic arc survives.',
+    crestDb: 18,
+  },
+  {
+    genre: 'carnatic',
+    group: 'indian',
+    name: 'Carnatic Classical',
+    icon: '🎼',
+    color: '#8ECAE6',
+    description: 'Kriti format: voice, mridangam, ghatam/kanjeera, veena or violin, tanpura sruti',
+    bpm: 96,
+    key: 'Raga Hamsadhwani',
+    region: 'South Indian classical',
+    tracks: ['carnaticVocal', 'mridangam', 'ghatam', 'kanjeera', 'veena', 'strings', 'tanpura'],
+    referenceSongs: ['Vathapi Ganapathim — Hamsadhwani', 'Krishna Nee Begane Baro', 'Maha Ganapathim — Nattai'],
+    mixNotes: 'Keep the sruti box/tanpura bed at -26 dBFS and mono. The mridangam needs its 65-120 Hz resonance intact — do not high-pass it like a kick drum.',
+    crestDb: 17,
+  },
+  {
+    genre: 'sufi',
+    group: 'indian',
+    name: 'Sufi / Ghazal / Qawwali',
+    icon: '🕯️',
+    color: '#7209B7',
+    description: 'Harmonium-led qawwali party vocals, hand percussion, sarangi lines and long hall tails',
+    bpm: 92,
+    key: 'Raga Bhairavi',
+    region: 'Sufi & ghazal',
+    tracks: ['leadVocal', 'harmony', 'bgVocal', 'tabla', 'dholak', 'harmonium', 'sarangi', 'tanpura', 'reverbReturn'],
+    referenceSongs: ['Kun Faya Kun — Rockstar', 'Aaj Jaane Ki Zid Na Karo — Farida Khanum', 'Chhaap Tilak', 'Tumhe Dillagi — Nusrat Fateh Ali Khan'],
+    mixNotes: 'The chorus party sits 4-6 dB behind the lead. Hand-clap transients stack fast — 2-3 dB of VCA on the percussion bus keeps integrated loudness steady for streaming.',
+    crestDb: 14,
+  },
+  {
+    genre: 'bhajan',
+    group: 'indian',
+    name: 'Bhajan / Devotional',
+    icon: '🙏',
+    color: '#FFD166',
+    description: 'Call-and-response lead, harmonium and tabla/dholak, bells and a wide temple ambience',
+    bpm: 84,
+    key: 'Raga Bhairav',
+    region: 'Devotional',
+    tracks: ['leadVocal', 'bgVocal', 'harmony', 'tabla', 'dholak', 'harmonium', 'bansuri', 'tanpura', 'ambient', 'reverbReturn'],
+    referenceSongs: ['Om Jai Jagdish Hare', 'Vaishnava Jana To', 'Shri Ram Chandra Kripalu', 'Gayatri Mantra'],
+    mixNotes: 'Leave the bells and manjira sparkle above 6 kHz but keep the harmonium centred and warm. Long reverb tails raise LUFS without raising peaks — meter the master, not the mix.',
+    crestDb: 14,
+  },
+  {
+    genre: 'indianIndie',
+    group: 'indian',
+    name: 'Indian Indie / Indie-Pop',
+    icon: '🎧',
+    color: '#06D6A0',
+    description: 'Artist-led indie: live kit, warm bass, acoustic and electric guitars with Hindi/English vocals',
+    bpm: 108,
+    key: 'G Major',
+    region: 'Indian independent',
+    tracks: ['kick', 'snare', 'hihat', 'bass', 'acousticGuitar', 'guitar', 'synth', 'sitar', 'leadVocal', 'bgVocal', 'ambient'],
+    referenceSongs: ['Choo Lo — The Local Train', 'cold/mess — Prateek Kuhad', 'Liggi — Ritviz'],
+    mixNotes: 'Natural rooms and real dynamics: keep the drum bus 2-3 dB lower than a pop mix so the vocal and guitars carry. A -14 LUFS master here still leaves 12-14 dB of PLR.',
+    crestDb: 12.5,
+  },
+  {
+    genre: 'southIndian',
+    group: 'indian',
+    name: 'South Indian Film (Tamil / Telugu)',
+    icon: '🎥',
+    color: '#F72585',
+    description: 'High-energy film score: layered percussion, brass stabs, folk strings and mass vocals',
+    bpm: 126,
+    key: 'Raga Hamsadhwani',
+    region: 'Tamil / Telugu film',
+    tracks: ['kick', 'snare', 'hihat', 'percussion', 'mridangam', 'subBass', 'synth', 'brass', 'bansuri', 'playbackVocal', 'harmony', 'fx'],
+    referenceSongs: ['Naatu Naatu — RRR', 'Why This Kolaveri Di', 'Butta Bomma — Ala Vaikunthapurramuloo', 'Rowdy Baby'],
+    mixNotes: 'Folk percussion stacks (mridangam + kanjeera + claps) eat headroom fast — bus-compress them 3-4 dB and let the brass stab own 200 Hz-2 kHz.',
+    crestDb: 10.5,
   },
 ];
 
@@ -895,15 +1458,48 @@ export const AVAILABLE_TRACK_TYPES: TrackType[] = [
   'leadVocal', 'bgVocal', 'harmony', 'adlibs',
   'fx', 'aux', 'reverbReturn', 'delayReturn',
   'dialogue', 'hostVocal', 'guestVocal', 'sfx', 'ambient', 'foley',
+  // Indian
+  'tabla', 'dholak', 'dhol', 'mridangam', 'ghatam', 'kanjeera',
+  'sitar', 'sarod', 'sarangi', 'veena', 'santoor', 'bansuri', 'shehnai',
+  'harmonium', 'tanpura', 'tumbi',
+  'hindustaniVocal', 'carnaticVocal', 'playbackVocal',
 ];
 
-export const TRACK_CATEGORIES: { id: TrackCategory; label: string; icon: string; types: TrackType[] }[] = [
+export const TRACK_CATEGORIES: {
+  id: TrackCategory;
+  label: string;
+  /** Compact chip label (the full label's first word is ambiguous for Indian groups). */
+  short?: string;
+  icon: string;
+  types: TrackType[];
+}[] = [
   { id: 'drums', label: 'Drums & Beats', icon: '🥁', types: ['kick', 'snare', 'hihat', 'overheads', 'toms', 'percussion'] },
   { id: 'bass', label: 'Bass & Sub', icon: '🎸', types: ['bass', 'subBass', 'synthBass'] },
   { id: 'instruments', label: 'Instruments & Synths', icon: '🎹', types: ['guitar', 'acousticGuitar', 'piano', 'synth', 'pad', 'strings', 'brass'] },
   { id: 'vocals', label: 'Vocals', icon: '🎤', types: ['leadVocal', 'bgVocal', 'harmony', 'adlibs'] },
   { id: 'fx', label: 'FX & Aux Sends', icon: '✦', types: ['fx', 'aux', 'reverbReturn', 'delayReturn'] },
   { id: 'speech', label: 'Dialogue & Post', icon: '🎙️', types: ['dialogue', 'hostVocal', 'guestVocal', 'sfx', 'ambient', 'foley'] },
+  {
+    id: 'indianPercussion',
+    label: 'Indian Percussion',
+    short: 'IN Percussion',
+    icon: '🪘',
+    types: ['tabla', 'dholak', 'dhol', 'mridangam', 'ghatam', 'kanjeera'],
+  },
+  {
+    id: 'indianMelodic',
+    label: 'Indian Instruments',
+    short: 'IN Strings',
+    icon: '🪕',
+    types: ['sitar', 'sarod', 'sarangi', 'veena', 'santoor', 'bansuri', 'shehnai', 'harmonium', 'tanpura', 'tumbi'],
+  },
+  {
+    id: 'vocals',
+    label: 'Indian Voices',
+    short: 'IN Vocals',
+    icon: '🎤',
+    types: ['hindustaniVocal', 'carnaticVocal', 'playbackVocal'],
+  },
 ];
 
 export function getLevelHealth(db: number, range: [number, number]): LevelHealth {
@@ -937,9 +1533,10 @@ export function genId(): string {
   return `trk-${++idCounter}-${Math.random().toString(36).substr(2, 5)}`;
 }
 
-export function createTrack(type: TrackType): Track {
+export function createTrack(type: TrackType, platform: PlatformId = DEFAULT_PLATFORM): Track {
   const def = TRACK_DEFS[type];
-  const midDb = Math.round((def.dbRange[0] + def.dbRange[1]) / 2);
+  const dbRange = trackTargetRange(def.dbRange, platform);
+  const midDb = Math.round(dbRange[0] + (dbRange[1] - dbRange[0]) / 2);
   return {
     id: genId(),
     type: def.type,
@@ -947,13 +1544,13 @@ export function createTrack(type: TrackType): Track {
     color: def.color,
     icon: def.icon,
     bus: def.bus,
-    dbRange: def.dbRange,
+    dbRange,
     currentDb: midDb,
     gainTrimDb: 0,
     pan: def.panDefault,
     muted: false,
     soloed: false,
-    isStereo: type === 'overheads' || type === 'piano' || type === 'synth' || type === 'pad' || type === 'strings' || type === 'reverbReturn' || type === 'delayReturn' || type === 'ambient',
+    isStereo: type === 'overheads' || type === 'piano' || type === 'synth' || type === 'pad' || type === 'strings' || type === 'reverbReturn' || type === 'delayReturn' || type === 'ambient' || type === 'santoor' || type === 'harmonium' || type === 'tanpura',
     plugins: JSON.parse(JSON.stringify(def.suggestedPlugins)),
   };
 }
@@ -1084,4 +1681,73 @@ export const FOLLOW_STEPS = [
   { id: 2, title: '3. Grouped into Subgroup Buses', description: 'Drums, Bass, Instruments, and Vocals sum into cohesive stems', icon: '📦' },
   { id: 3, title: '4. Summed at the Mix Bus', description: 'All stems combine into the stereo Mix Bus with 3-6 dB headroom', icon: 'Σ' },
   { id: 4, title: '5. Pre-Mastering & Output Delivery', description: 'True Peak limiting and LUFS metering prepare the audio for release', icon: '✨' },
+  { id: 5, title: '6. Upload: YouTube + Spotify', description: 'One -14 LUFS / -1.0 dBTP master is encoded, normalized and streamed', icon: '🚀' },
 ];
+
+/* -------------------------------------------------------------------------- */
+/* Genre loudness profiles                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Typical crest factor (true peak minus integrated LUFS) per repertoire.
+ * Dense, compressed styles sit around 9-11 dB; acoustic and classical
+ * repertoire keeps 15-20 dB, which is why those masters land quieter for the
+ * same true-peak ceiling.
+ */
+export const GENRE_CREST_DB: Record<Genre, number> = {
+  pop: 12,
+  rock: 11,
+  hiphop: 9,
+  electronic: 9.5,
+  acoustic: 14,
+  cinematic: 17,
+  podcast: 13,
+  custom: 12,
+  bollywood: 11,
+  punjabi: 9,
+  hindustani: 18,
+  carnatic: 17,
+  sufi: 14,
+  bhajan: 14,
+  indianIndie: 12.5,
+  southIndian: 10.5,
+};
+
+export function getGenrePreset(genre: Genre | null): GenrePreset | undefined {
+  if (!genre) return undefined;
+  return GENRE_PRESETS.find(p => p.genre === genre);
+}
+
+export function getGenreCrestDb(genre: Genre | null): number {
+  if (!genre) return GENRE_CREST_DB.custom;
+  return getGenrePreset(genre)?.crestDb ?? GENRE_CREST_DB[genre] ?? GENRE_CREST_DB.custom;
+}
+
+export const INDIAN_TRACK_TYPES: TrackType[] = [
+  'tabla', 'dholak', 'dhol', 'mridangam', 'ghatam', 'kanjeera',
+  'sitar', 'sarod', 'sarangi', 'veena', 'santoor', 'bansuri', 'shehnai',
+  'harmonium', 'tanpura', 'tumbi',
+  'hindustaniVocal', 'carnaticVocal', 'playbackVocal',
+];
+
+export function isIndianTrackType(type: TrackType): boolean {
+  return INDIAN_TRACK_TYPES.includes(type);
+}
+
+/** Genre presets split into the two repertoire groups shown in the picker. */
+export function getGenrePresetsByGroup(): { group: GenreGroup; label: string; icon: string; presets: GenrePreset[] }[] {
+  return [
+    {
+      group: 'global',
+      label: 'Global Styles',
+      icon: '🌍',
+      presets: GENRE_PRESETS.filter(p => p.group === 'global'),
+    },
+    {
+      group: 'indian',
+      label: 'Indian Songs & Styles',
+      icon: '🇮🇳',
+      presets: GENRE_PRESETS.filter(p => p.group === 'indian'),
+    },
+  ];
+}

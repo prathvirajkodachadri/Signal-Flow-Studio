@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Volume2, VolumeX, Sparkles, AlertTriangle, ShieldCheck,
@@ -6,6 +6,9 @@ import {
   Sliders, ArrowRight, CornerDownRight, BarChart2,
 } from 'lucide-react';
 import { LevelMeter, AnalogVuMeter, LufsMeter, MiniWaveform, LevelHealthBadge } from './LevelMeter';
+import { PlatformChipRow, DeliveryBoard } from './PlatformSelector';
+import { useSession } from '../context/SessionContext';
+import { PLATFORM_PRESETS, getPlatform } from '../data';
 import { audioEngine } from '../utils/audioEngine';
 
 interface LevelZoneDef {
@@ -183,12 +186,81 @@ const INSTRUMENT_TARGET_GUIDES = [
     bus: 'Pre-Master',
     tip: 'Crucial for mastering: retain 3 to 6 dB true headroom before output limiting.',
   },
+  /* Indian instruments & voices — same -18 dBFS gain-staging rule */
+  {
+    name: 'Tabla / Dholak / Dhol',
+    icon: '🪘',
+    color: '#FF9933',
+    peakTarget: '-18 to -10 dBFS',
+    rmsTarget: '-20 to -15 dBFS',
+    bus: 'Drum Bus',
+    tip: 'Hand percussion carries heavy low-mids: mono below 120 Hz and duck the bass on every dhol hit.',
+    indian: true,
+  },
+  {
+    name: 'Sitar / Sarod / Veena',
+    icon: '🪕',
+    color: '#FFB703',
+    peakTarget: '-20 to -14 dBFS',
+    rmsTarget: '-22 to -19 dBFS',
+    bus: 'Inst Bus',
+    tip: 'Long sympathetic decay raises integrated loudness — control 2-4 kHz bite, keep the buzz.',
+    indian: true,
+  },
+  {
+    name: 'Harmonium / Tanpura',
+    icon: '🎹',
+    color: '#F4A261',
+    peakTarget: '-26 to -15 dBFS',
+    rmsTarget: '-26 to -20 dBFS',
+    bus: 'Inst Bus',
+    tip: 'The drone is a floor, not a layer: tanpura sits 8-12 dB under the soloist and stays centred.',
+    indian: true,
+  },
+  {
+    name: 'Bansuri / Shehnai',
+    icon: '♪',
+    color: '#95D5B2',
+    peakTarget: '-21 to -13 dBFS',
+    rmsTarget: '-22 to -18 dBFS',
+    bus: 'Inst Bus',
+    tip: 'Keep the flute breath and tame shehnai 2-3 kHz with dynamic EQ instead of a static cut.',
+    indian: true,
+  },
+  {
+    name: 'Playback / Classical Vocal',
+    icon: '🎤',
+    color: '#FF006E',
+    peakTarget: '-20 to -12 dBFS',
+    rmsTarget: '-18 to -15 dBFS',
+    bus: 'Vocal Bus',
+    tip: 'Filmi vocals sit 2-4 dB hotter with big reverb; classical vocals need 1-2 dB of leveling only.',
+    indian: true,
+  },
 ];
 
 export function LevelReference() {
   const [dbLevel, setDbLevel] = useState<number>(-18);
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('tone');
+  const { state } = useSession();
+  const platform = getPlatform(state.platform);
+
+  /** The "Streaming Master" preset follows the selected upload platform. */
+  const signalPresets = useMemo(
+    () =>
+      SIGNAL_PRESETS.map(p =>
+        p.id === 'master'
+          ? {
+              ...p,
+              dbPeak: platform.truePeakCeiling,
+              lufs: platform.targetLufs,
+              desc: `${platform.name} — ${platform.targetLufs} LUFS / ${platform.truePeakCeiling.toFixed(1)} dBTP`,
+            }
+          : p,
+      ),
+    [platform],
+  );
 
   // Find active zone
   const activeZone = LEVEL_ZONES.find(z => dbLevel >= z.range[0] && dbLevel <= z.range[1]) ||
@@ -201,7 +273,7 @@ export function LevelReference() {
     }
   };
 
-  const handleSelectPreset = (preset: typeof SIGNAL_PRESETS[0]) => {
+  const handleSelectPreset = (preset: (typeof SIGNAL_PRESETS)[number]) => {
     setSelectedPresetId(preset.id);
     setDbLevel(preset.dbPeak);
     if (isPlayingAudio) {
@@ -258,6 +330,74 @@ export function LevelReference() {
         </button>
       </div>
 
+      {/* ==================== Upload destination: YouTube + Spotify ==================== */}
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <span
+                className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold"
+                style={{ background: `${platform.color}18`, color: platform.color }}
+              >
+                UPLOAD DESTINATION
+              </span>
+              <span className="text-xs font-mono text-white/40">
+                These dB targets change when you change the platform
+              </span>
+            </div>
+            <h3 className="text-base font-bold text-white/95 mt-1" style={{ fontFamily: 'Outfit, sans-serif' }}>
+              {platform.icon} {platform.name} — {platform.targetLufs} LUFS / {platform.truePeakCeiling.toFixed(1)} dBTP
+            </h3>
+            <p className="text-[11px] text-white/45 font-mono mt-0.5 max-w-3xl">{platform.summary}</p>
+          </div>
+          <PlatformChipRow size="md" />
+        </div>
+
+        {/* Full level plan per platform */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {PLATFORM_PRESETS.map(p => {
+            const active = p.id === state.platform;
+            return (
+              <div
+                key={p.id}
+                className="p-3.5 rounded-2xl border space-y-2 backdrop-blur-md"
+                style={{
+                  background: active ? `${p.color}10` : 'rgba(255,255,255,0.02)',
+                  borderColor: active ? `${p.color}50` : 'rgba(255,255,255,0.06)',
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span>{p.icon}</span>
+                    <span className="text-[11px] font-bold" style={{ color: p.color }}>{p.shortName}</span>
+                  </div>
+                  <span className="text-[8px] font-mono text-white/25">{p.normalizationLabel}</span>
+                </div>
+
+                <div className="space-y-1 font-mono text-[9px]">
+                  <Row label="Integrated" value={`${p.targetLufs} LUFS`} color={p.color} />
+                  <Row label="True peak" value={`${p.truePeakCeiling.toFixed(1)} dBTP`} color="#FFD700" />
+                  <Row label="Mix bus peak" value={`${p.mixBusPeak[0]} to ${p.mixBusPeak[1]} dBFS`} color="#06D6A0" />
+                  <Row label="Headroom" value={`${p.headroomDb} dB`} color="#3A86FF" />
+                  <Row
+                    label="Bus trim"
+                    value={p.busTrimDb === 0 ? 'baseline' : `${p.busTrimDb > 0 ? '+' : ''}${p.busTrimDb} dB`}
+                    color={p.busTrimDb === 0 ? 'rgba(255,255,255,0.5)' : p.color}
+                  />
+                  <Row
+                    label="Channel trim"
+                    value={p.trackTrimDb === 0 ? 'baseline' : `${p.trackTrimDb > 0 ? '+' : ''}${p.trackTrimDb} dB`}
+                    color={p.trackTrimDb === 0 ? 'rgba(255,255,255,0.5)' : p.color}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <DeliveryBoard />
+      </div>
+
       {/* Main Interactive Level Station */}
       <div
         className="rounded-3xl p-5 sm:p-7 border shadow-2xl space-y-6"
@@ -271,7 +411,7 @@ export function LevelReference() {
         <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 custom-scrollbar">
           <span className="text-xs font-mono font-bold text-white/50 shrink-0">Signal Presets:</span>
           <div className="flex gap-2 shrink-0">
-            {SIGNAL_PRESETS.map(preset => (
+            {signalPresets.map(preset => (
               <button
                 key={preset.id}
                 onClick={() => handleSelectPreset(preset)}
@@ -567,6 +707,11 @@ export function LevelReference() {
                 borderColor: `${item.color}25`,
               }}
             >
+              {item.indian && (
+                <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-300 border border-orange-500/25">
+                  🇮🇳 INDIAN
+                </span>
+              )}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">{item.icon}</span>
@@ -595,6 +740,15 @@ export function LevelReference() {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function Row({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-white/35">{label}</span>
+      <span className="font-bold" style={{ color }}>{value}</span>
     </div>
   );
 }

@@ -5,6 +5,8 @@ import { SessionBuilder } from './pages/SessionBuilder';
 import { MixerView } from './components/MixerView';
 import { LevelReference } from './components/LevelReference';
 import { Guides } from './components/Guides';
+import { PlatformDropdown } from './components/PlatformSelector';
+import { getPlatform } from './data';
 import {
   LayoutGrid, SlidersHorizontal, BarChart3, BookOpen, Radio,
   Activity, Zap, Disc, Volume2, Sparkles, Layers,
@@ -14,6 +16,7 @@ type Tab = 'session' | 'mixer' | 'levels' | 'guides';
 
 function AppContent() {
   const { state } = useSession();
+  const platform = getPlatform(state.platform);
   const [activeTab, setActiveTab] = useState<Tab>('session');
   const [reducedMotion, setReducedMotion] = useState(false);
 
@@ -31,6 +34,8 @@ function AppContent() {
     { id: 'levels', label: 'Level Reference', icon: <BarChart3 size={15} />, shortLabel: 'Level Reference', badge: '-18 0VU' },
     { id: 'guides', label: 'Visual Guides', icon: <BookOpen size={15} />, shortLabel: 'Visual Guides' },
   ];
+
+  const headerTabs = tabs;
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#070b14] text-white select-none">
@@ -86,7 +91,7 @@ function AppContent() {
 
         {/* Tab Navigation */}
         <nav className="flex items-center gap-1 bg-white/5 rounded-2xl p-1 border border-white/5 shadow-inner">
-          {tabs.map(tab => {
+          {headerTabs.map(tab => {
             const isActive = activeTab === tab.id;
             return (
               <button
@@ -121,12 +126,23 @@ function AppContent() {
           })}
         </nav>
 
+        <div className="lg:hidden">
+          <PlatformDropdown />
+        </div>
+
         {/* Studio Output Monitor */}
         <div className="hidden lg:flex items-center gap-3 bg-white/3 px-3 py-1.5 rounded-xl border border-white/5 font-mono text-[9px]">
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981]" />
             <span className="text-white/40">CALIBRATION:</span>
             <span className="text-emerald-400 font-bold">-18 dBFS (0 VU)</span>
+          </div>
+          <span className="text-white/20">|</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-white/40">MASTER:</span>
+            <span className="font-bold" style={{ color: platform.color }}>
+              {platform.targetLufs} LUFS / {platform.truePeakCeiling.toFixed(1)} dBTP
+            </span>
           </div>
           {state.tracks.length > 0 && (
             <>
@@ -137,6 +153,7 @@ function AppContent() {
               </div>
             </>
           )}
+          <PlatformDropdown />
         </div>
       </header>
 

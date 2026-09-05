@@ -6,8 +6,16 @@ import {
   Disc, BarChart2, Radio, SlidersHorizontal,
 } from 'lucide-react';
 import { LevelMeter, MiniWaveform, AnalogVuMeter, LufsMeter } from './LevelMeter';
+import { PlatformChipRow, DeliveryBoard } from './PlatformSelector';
+import { useSession, useSignalFlowStages } from '../context/SessionContext';
+import {
+  PLATFORM_PRESETS, getPlatform, getSignalFlowStages, GENRE_PRESETS,
+  TRACK_DEFS, INDIAN_TRACK_TYPES, BUS_DEFS,
+} from '../data';
 
-type GuideTab = 'recording' | 'mixing' | 'mastering' | 'gainstaging' | 'routing';
+type GuideTab =
+  | 'recording' | 'mixing' | 'mastering' | 'gainstaging' | 'routing'
+  | 'delivery' | 'indian';
 
 export function Guides() {
   const [activeTab, setActiveTab] = useState<GuideTab>('recording');
@@ -16,6 +24,8 @@ export function Guides() {
     { id: 'recording', label: '1. Recording Guide', icon: '🎙️', color: '#06D6A0' },
     { id: 'mixing', label: '2. Mixing Guide', icon: '🎚️', color: '#3A86FF' },
     { id: 'mastering', label: '3. Mastering Guide', icon: '✨', color: '#FFD700' },
+    { id: 'delivery', label: '4. YouTube + Spotify Delivery', icon: '🚀', color: '#FF2D55' },
+    { id: 'indian', label: 'Indian Songs & Styles', icon: '🇮🇳', color: '#FF9933' },
     { id: 'gainstaging', label: 'Gain Staging Rules', icon: '⚡', color: '#8338EC' },
     { id: 'routing', label: 'Bus Routing Logic', icon: '🔀', color: '#FF006E' },
   ];
@@ -70,6 +80,8 @@ export function Guides() {
         {activeTab === 'mastering' && <MasteringGuide key="mst" />}
         {activeTab === 'gainstaging' && <GainStagingGuide key="gs" />}
         {activeTab === 'routing' && <BusRoutingGuide key="br" />}
+        {activeTab === 'delivery' && <PlatformDeliveryGuide key="dlv" />}
+        {activeTab === 'indian' && <IndianMusicGuide key="ind" />}
       </AnimatePresence>
     </div>
   );
@@ -528,6 +540,516 @@ function BusRoutingGuide() {
             Receives all post-fader auxiliary sends. Keeps CPU usage low and places the entire mix into a single coherent acoustic room.
           </p>
         </div>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ========================================================================== */
+/* 4. YOUTUBE + SPOTIFY DELIVERY GUIDE                                         */
+/* ========================================================================== */
+
+function PlatformDeliveryGuide() {
+  const { state } = useSession();
+  const stages = useSignalFlowStages();
+  const platform = getPlatform(state.platform);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -15 }}
+      className="space-y-6"
+    >
+      {/* Banner */}
+      <div
+        className="p-6 rounded-3xl border shadow-2xl"
+        style={{
+          background: `linear-gradient(135deg, ${platform.color}18 0%, rgba(0,0,0,0.4) 60%)`,
+          borderColor: `${platform.color}40`,
+        }}
+      >
+        <div className="flex flex-col lg:flex-row items-start justify-between gap-5">
+          <div className="space-y-2 max-w-2xl">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span
+                className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold"
+                style={{ background: `${platform.color}25`, color: platform.color }}
+              >
+                STAGE 4: DELIVERY — {platform.services.join(' + ').toUpperCase()}
+              </span>
+              <PlatformChipRow />
+            </div>
+            <h3 className="text-xl font-bold text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>
+              {platform.icon} {platform.name}: {platform.targetLufs} LUFS integrated,{' '}
+              {platform.truePeakCeiling.toFixed(1)} dBTP ceiling
+            </h3>
+            <p className="text-xs text-white/70 font-sans leading-relaxed">{platform.summary}</p>
+            <p className="text-[11px] font-mono text-white/45 leading-relaxed">
+              {platform.normalizationDetail}
+            </p>
+          </div>
+
+          <div className="shrink-0 w-60">
+            <LufsMeter lufs={platform.targetLufs} target={platform.targetLufs} truePeak={platform.truePeakCeiling} />
+          </div>
+        </div>
+      </div>
+
+      {/* The two pipelines side by side */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[
+          {
+            id: 'youtube' as const,
+            title: 'YouTube',
+            lines: [
+              'Normalization: DOWN-ONLY (about -14 LUFS)',
+              'Louder uploads get turned down',
+              'Quieter uploads stay quieter',
+              'True peak: keep at or below -1.0 dBTP',
+              '48 kHz when the audio is muxed into video',
+            ],
+          },
+          {
+            id: 'spotify' as const,
+            title: 'Spotify',
+            lines: [
+              'Normalization: UP and DOWN (-14 LUFS)',
+              'Louder masters are attenuated by simple gain',
+              'Quiet masters are boosted until headroom runs out',
+              'True peak below -1.0 dBTP — below -2.0 dBTP if louder than -14 LUFS',
+              'Deliver lossless WAV/FLAC through the distributor',
+            ],
+          },
+          {
+            id: 'youtube-spotify' as const,
+            title: 'Both, one master',
+            lines: [
+              'Target -14.0 to -13.5 LUFS integrated',
+              'Never under -14 LUFS: YouTube will not boost it',
+              'Limiter ceiling -1.0 dBTP (lossy-encode safe)',
+              'Keep the PLR at 10-13 dB so it still punches',
+              'Same 24-bit WAV/FLAC upload for both destinations',
+            ],
+          },
+        ].map(col => {
+          const spec = getPlatform(col.id);
+          const active = state.platform === col.id;
+          return (
+            <div
+              key={col.id}
+              className="p-4 rounded-2xl border space-y-2"
+              style={{
+                background: `${spec.color}08`,
+                borderColor: active ? `${spec.color}55` : `${spec.color}25`,
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold" style={{ color: spec.color }}>
+                  {spec.icon} {col.title}
+                </span>
+                <span className="text-[9px] font-mono text-white/30">{spec.targetLufs} LUFS</span>
+              </div>
+              <ul className="space-y-1">
+                {col.lines.map(l => (
+                  <li key={l} className="text-[10px] font-mono text-white/55 flex gap-1.5">
+                    <span style={{ color: spec.color }}>▸</span>
+                    <span>{l}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Signal flow with platform-driven dB numbers */}
+      <div className="p-5 rounded-3xl bg-black/40 border border-white/10 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-xs font-mono font-bold text-white/80 uppercase">
+            Signal flow with {platform.shortName} dB targets
+          </h4>
+          <span className="text-[9px] font-mono text-white/30">
+            Stages 1-4 are universal · stages 5-8 move with the upload destination
+          </span>
+        </div>
+
+        <div className="overflow-x-auto custom-scrollbar">
+          <div className="flex items-stretch gap-2 min-w-[900px]">
+            {stages.map((st, i) => (
+              <div key={st.id} className="flex items-center flex-1">
+                <div
+                  className="flex-1 p-2.5 rounded-xl border text-center"
+                  style={{
+                    background: st.scope === 'platform' ? `${platform.color}12` : 'rgba(255,255,255,0.02)',
+                    borderColor: st.scope === 'platform' ? `${platform.color}40` : 'rgba(255,255,255,0.06)',
+                  }}
+                >
+                  <div className="text-[8px] font-mono text-white/30">STEP {st.step}</div>
+                  <div className="text-base">{st.icon}</div>
+                  <div className="text-[9px] font-bold text-white/85 leading-tight">{st.shortName}</div>
+                  <div className="text-[10px] font-mono font-black mt-1" style={{ color: st.color }}>
+                    {st.id === 'delivery' ? `${st.targetDb} LUFS` : `${st.targetDb} dBFS`}
+                  </div>
+                  <div className="text-[7px] font-mono text-white/35">{st.targetText}</div>
+                  <div
+                    className="text-[7px] font-mono mt-1 px-1 rounded"
+                    style={{
+                      background: st.scope === 'platform' ? `${platform.color}22` : 'rgba(255,255,255,0.05)',
+                      color: st.scope === 'platform' ? platform.color : 'rgba(255,255,255,0.35)',
+                    }}
+                  >
+                    {st.scope === 'platform' ? 'PLATFORM' : 'UNIVERSAL'}
+                  </div>
+                </div>
+                {i < stages.length - 1 && (
+                  <div className="w-4 h-0.5 shrink-0" style={{ background: `${st.color}50` }} />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Every platform's dB plan */}
+      <div className="p-5 rounded-3xl bg-black/40 border border-white/10 space-y-3">
+        <h4 className="text-xs font-mono font-bold text-white/80 uppercase">
+          Level plan comparison — what changes per destination
+        </h4>
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full font-mono text-[9px] min-w-[720px]">
+            <thead>
+              <tr className="text-white/35 border-b border-white/10">
+                <th className="text-left p-2">Destination</th>
+                <th className="p-2">Integrated</th>
+                <th className="p-2">True peak</th>
+                <th className="p-2">Mix bus peak</th>
+                <th className="p-2">Bus trim</th>
+                <th className="p-2">Channel trim</th>
+                <th className="p-2">Headroom</th>
+                <th className="p-2">Normalization</th>
+              </tr>
+            </thead>
+            <tbody>
+              {PLATFORM_PRESETS.map(pp => {
+                const active = pp.id === state.platform;
+                return (
+                  <tr
+                    key={pp.id}
+                    className="border-b border-white/5"
+                    style={active ? { background: `${pp.color}12` } : undefined}
+                  >
+                    <td className="p-2 text-left">
+                      <span className="mr-1">{pp.icon}</span>
+                      <span style={{ color: pp.color }}>{pp.shortName}</span>
+                    </td>
+                    <td className="p-2 text-center text-white/70">{pp.targetLufs} LUFS</td>
+                    <td className="p-2 text-center text-white/70">{pp.truePeakCeiling.toFixed(1)} dBTP</td>
+                    <td className="p-2 text-center text-white/70">
+                      {pp.mixBusPeak[0]} to {pp.mixBusPeak[1]}
+                    </td>
+                    <td className="p-2 text-center" style={{ color: pp.busTrimDb === 0 ? 'rgba(255,255,255,0.35)' : pp.color }}>
+                      {pp.busTrimDb === 0 ? '—' : `${pp.busTrimDb} dB`}
+                    </td>
+                    <td className="p-2 text-center" style={{ color: pp.trackTrimDb === 0 ? 'rgba(255,255,255,0.35)' : pp.color }}>
+                      {pp.trackTrimDb === 0 ? '—' : `${pp.trackTrimDb} dB`}
+                    </td>
+                    <td className="p-2 text-center text-white/70">{pp.headroomDb} dB</td>
+                    <td className="p-2 text-center text-white/45">{pp.normalizationLabel}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[9px] font-mono text-white/30">
+          Switching the destination re-targets the session: subgroup buses and channel windows shift by the
+          trim above, the limiter ceiling and LUFS target change, and the upload check re-runs.
+        </p>
+      </div>
+
+      {/* Live delivery board */}
+      <DeliveryBoard />
+
+      {/* Upload day checklist */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 space-y-2">
+          <div className="text-xs font-bold text-emerald-400">
+            ✓ Upload day checklist — {platform.services.join(' + ')}
+          </div>
+          <ul className="space-y-1">
+            {platform.uploadChecklist.map(c => (
+              <li key={c} className="text-[10px] font-mono text-white/60 flex gap-1.5">
+                <span className="text-emerald-400">✓</span>
+                <span>{c}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-red-500/5 border border-red-500/20 space-y-2">
+          <div className="text-xs font-bold text-red-400">✕ Mistakes that get your song turned down</div>
+          <ul className="space-y-1">
+            {platform.avoidList.map(c => (
+              <li key={c} className="text-[10px] font-mono text-white/60 flex gap-1.5">
+                <span className="text-red-400">✕</span>
+                <span>{c}</span>
+              </li>
+            ))}
+            <li className="text-[10px] font-mono text-white/60 flex gap-1.5">
+              <span className="text-red-400">✕</span>
+              <span>Mastering to the meter instead of the song — if it needs -12 LUFS to feel right, keep -12 and let the platform gain it down.</span>
+            </li>
+            <li className="text-[10px] font-mono text-white/60 flex gap-1.5">
+              <span className="text-red-400">✕</span>
+              <span>Checking the WAV only. Always audition the encoded AAC/Ogg render before publishing.</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ========================================================================== */
+/* INDIAN SONGS & STYLES GUIDE                                                 */
+/* ========================================================================== */
+
+function IndianMusicGuide() {
+  const indianPresets = GENRE_PRESETS.filter(p => p.group === 'indian');
+  const platform = getPlatform('youtube-spotify');
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -15 }}
+      className="space-y-6"
+    >
+      {/* Banner */}
+      <div
+        className="p-6 rounded-3xl border shadow-2xl"
+        style={{
+          background: 'linear-gradient(135deg, rgba(255,153,51,0.16) 0%, rgba(19,136,8,0.10) 50%, rgba(0,0,0,0.4) 100%)',
+          borderColor: 'rgba(255,153,51,0.35)',
+        }}
+      >
+        <div className="flex flex-col lg:flex-row items-start justify-between gap-5">
+          <div className="space-y-2 max-w-2xl">
+            <span className="px-2.5 py-0.5 rounded-full bg-orange-500/15 text-orange-300 border border-orange-500/25 text-[10px] font-mono font-bold">
+              INDIAN REPERTOIRE — FILMI • CLASSICAL • FOLK • DEVOIONAL • INDIE
+            </span>
+            <h3 className="text-xl font-bold text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>
+              🇮🇳 Indian songs: instruments, routing and loudness targets
+            </h3>
+            <p className="text-xs text-white/70 font-sans leading-relaxed">
+              Indian sessions are built the same way — source → inserts → faders → sends → subgroups →
+              mix bus → pre-master → delivery — but the instrument palette changes: tabla, dholak, dhol and
+              mridangam instead of (or alongside) a drum kit, and sitar, sarod, veena, santoor, bansuri,
+              shehnai and harmonium instead of guitars and synths.
+            </p>
+            <p className="text-[11px] font-mono text-white/50 leading-relaxed">
+              Almost every Indian release lands on YouTube first (official video or lyric video) and on
+              Spotify plus the local DSPs the same week. One master at{' '}
+              <span className="text-orange-300">-14 LUFS / -1.0 dBTP</span> satisfies all of them —
+              that is the default target of this studio.
+            </p>
+          </div>
+
+          <div className="shrink-0 w-60">
+            <LufsMeter lufs={-14} target={platform.targetLufs} truePeak={-1.0} />
+          </div>
+        </div>
+      </div>
+
+      {/* Genre cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {indianPresets.map(preset => (
+          <div
+            key={preset.genre}
+            className="p-4 rounded-2xl border space-y-2.5"
+            style={{ background: `${preset.color}08`, borderColor: `${preset.color}28` }}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{preset.icon}</span>
+                <div>
+                  <div className="text-sm font-bold" style={{ color: preset.color }}>
+                    {preset.name}
+                  </div>
+                  <div className="text-[8px] font-mono text-white/35">{preset.region}</div>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-[9px] font-mono text-white/40">
+                  {preset.bpm > 0 ? `${preset.bpm} BPM` : 'free'}
+                </div>
+                <div className="text-[8px] font-mono text-white/30">{preset.key}</div>
+              </div>
+            </div>
+
+            <p className="text-[11px] font-sans text-white/60 leading-relaxed">{preset.description}</p>
+
+            {/* Loudness / crest guidance */}
+            <div className="grid grid-cols-3 gap-1.5 text-center font-mono">
+              <div className="p-1.5 rounded-lg bg-black/30 border border-white/5">
+                <div className="text-[7px] text-white/30 uppercase">Crest</div>
+                <div className="text-[10px] font-bold text-emerald-400">{preset.crestDb} dB</div>
+              </div>
+              <div className="p-1.5 rounded-lg bg-black/30 border border-white/5">
+                <div className="text-[7px] text-white/30 uppercase">Master</div>
+                <div className="text-[10px] font-bold" style={{ color: preset.color }}>
+                  {preset.crestDb && preset.crestDb >= 15 ? '-16 LUFS' : '-14 LUFS'}
+                </div>
+              </div>
+              <div className="p-1.5 rounded-lg bg-black/30 border border-white/5">
+                <div className="text-[7px] text-white/30 uppercase">Ceiling</div>
+                <div className="text-[10px] font-bold text-yellow-400">-1.0 dBTP</div>
+              </div>
+            </div>
+
+            {preset.mixNotes && (
+              <p className="text-[10px] font-mono text-white/50 leading-relaxed">{preset.mixNotes}</p>
+            )}
+
+            <div className="pt-1.5 border-t border-white/5">
+              <div className="text-[7px] font-mono text-white/25 uppercase tracking-wider mb-1">
+                Signal flow for this style
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {Array.from(new Set(preset.tracks)).map(tt => (
+                  <span
+                    key={tt}
+                    className="text-[8px] font-mono px-1.5 py-0.5 rounded-md border"
+                    style={{
+                      background: `${TRACK_DEFS[tt].color}12`,
+                      borderColor: `${TRACK_DEFS[tt].color}30`,
+                      color: TRACK_DEFS[tt].color,
+                    }}
+                  >
+                    {TRACK_DEFS[tt].icon} {TRACK_DEFS[tt].name}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {preset.referenceSongs && (
+              <div className="pt-1.5 border-t border-white/5">
+                <div className="text-[7px] font-mono text-white/25 uppercase tracking-wider mb-1">
+                  Reference songs
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {preset.referenceSongs.map(song => (
+                    <span
+                      key={song}
+                      className="text-[8px] font-mono text-white/45 px-1.5 py-0.5 rounded-full bg-white/5 border border-white/5"
+                    >
+                      ♪ {song}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Instrument target table */}
+      <div className="p-5 rounded-3xl bg-black/40 border border-white/10 space-y-3">
+        <div>
+          <h4 className="text-xs font-mono font-bold text-white/80 uppercase">
+            Indian instrument level targets (dBFS peak windows)
+          </h4>
+          <p className="text-[9px] font-mono text-white/30">
+            Same gain-staging rule as any other session: channels sit around -18 dBFS nominal so 20+ tracks
+            never threaten the mix bus.
+          </p>
+        </div>
+
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full font-mono text-[9px] min-w-[680px]">
+            <thead>
+              <tr className="text-white/35 border-b border-white/10">
+                <th className="text-left p-2">Instrument</th>
+                <th className="p-2">Peak window</th>
+                <th className="p-2">Pan</th>
+                <th className="p-2">Frequency</th>
+                <th className="p-2">Bus</th>
+                <th className="text-left p-2">Mixing note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {INDIAN_TRACK_TYPES.map(type => {
+                const def = TRACK_DEFS[type];
+                return (
+                  <tr key={type} className="border-b border-white/5">
+                    <td className="p-2 text-left">
+                      <span className="mr-1">{def.icon}</span>
+                      <span style={{ color: def.color }}>{def.name}</span>
+                    </td>
+                    <td className="p-2 text-center text-emerald-400">
+                      {def.dbRange[0]} to {def.dbRange[1]}
+                    </td>
+                    <td className="p-2 text-center text-white/50">
+                      {def.panDefault === 0 ? 'C' : def.panDefault < 0 ? `L${Math.abs(Math.round(def.panDefault * 100))}` : `R${Math.round(def.panDefault * 100)}`}
+                    </td>
+                    <td className="p-2 text-center text-white/45">{def.frequencyRange}</td>
+                    <td className="p-2 text-center text-white/45">{BUS_DEFS[def.bus].name.replace(' Bus', '')}</td>
+                    <td className="p-2 text-left text-white/50 max-w-[280px]">{def.description}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Practical notes */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="p-4 rounded-2xl bg-orange-500/5 border border-orange-500/20 space-y-2">
+          <div className="text-xs font-bold text-orange-300">🥁 Percussion first</div>
+          <p className="text-[11px] font-sans text-white/60">
+            Dhol, dholak and mridangam carry far more low-mid energy than a recorded kit. Mono everything
+            below 120 Hz and sidechain the bass to the dhol, or your -14 LUFS master will pump.
+          </p>
+        </div>
+        <div className="p-4 rounded-2xl bg-green-500/5 border border-green-500/20 space-y-2">
+          <div className="text-xs font-bold text-green-300">🎤 Voice is the song</div>
+          <p className="text-[11px] font-sans text-white/60">
+            In filmi, ghazal, qawwali and bhajan the vocal sits 2-4 dB hotter than a Western pop mix and
+            the reverb is bigger. Keep the tanpura and harmonium 8-12 dB under the voice so the raga stays
+            clear without eating headroom.
+          </p>
+        </div>
+        <div className="p-4 rounded-2xl bg-purple-500/5 border border-purple-500/20 space-y-2">
+          <div className="text-xs font-bold text-purple-300">📊 Classical needs dynamics</div>
+          <p className="text-[11px] font-sans text-white/60">
+            Hindustani and Carnatic recordings live at -16 to -18 LUFS with 16-20 LU of range. Do not
+            let the limiter flatten an alap: master the arc, not the meter, and keep the ceiling at
+            -1.0 dBTP.
+          </p>
+        </div>
+      </div>
+
+      {/* Delivery reminder */}
+      <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm">🚀</span>
+          <span className="text-xs font-mono font-bold text-white/75 uppercase">
+            Releasing an Indian track on YouTube + Spotify
+          </span>
+        </div>
+        <ol className="space-y-1 list-decimal list-inside">
+          {[
+            'Mix with -18 dBFS channel targets and the mix bus peaking -6 to -3 dBFS.',
+            'Master to -14 LUFS integrated with a -1.0 dBTP ceiling (drop to -2.0 dBTP if you push louder).',
+            'Export 24-bit WAV/FLAC at the session rate; use 48 kHz if the master is going into a video.',
+            'Upload the same lossless master to YouTube (video/artwork track) and to Spotify through your distributor.',
+            'A/B against the reference songs for the style before you publish — loudness is easy, translation is the work.',
+          ].map(step => (
+            <li key={step} className="text-[10px] font-mono text-white/55">{step}</li>
+          ))}
+        </ol>
       </div>
     </motion.div>
   );
